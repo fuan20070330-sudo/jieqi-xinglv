@@ -93,8 +93,9 @@ kbd {
 .weather-chip { position: absolute; top: 98px; left: max(18px, 3vw); z-index: 19; display: inline-flex; align-items: center; gap: 8px; padding: 7px 12px; border-radius: 999px; background: rgba(255,255,255,.68); color: var(--season-ink); box-shadow: 0 6px 18px rgba(48,68,51,.1); font-size: 11px; backdrop-filter: blur(10px); }
 .weather-chip__dot { width: 7px; height: 7px; border-radius: 50%; background: var(--season); box-shadow: 0 0 0 4px var(--season-pale); }
 .world-help { position: absolute; left: max(18px, 3vw); bottom: calc(22px + var(--safe-bottom)); z-index: 14; display: flex; align-items: center; gap: 7px; padding: 8px 12px; border-radius: 999px; background: rgba(255,255,255,.7); color: var(--soft); font-size: 11px; box-shadow: 0 7px 20px rgba(48,68,51,.1); backdrop-filter: blur(10px); }
-.interaction-prompt { position: absolute; left: 50%; bottom: calc(32px + var(--safe-bottom)); z-index: 18; min-width: 230px; display: flex; align-items: center; gap: 11px; padding: 10px 16px 10px 10px; border: 1px solid rgba(255,255,255,.9); border-radius: 18px; background: rgba(255,253,244,.92); box-shadow: 0 16px 42px rgba(48,68,51,.2); transform: translateX(-50%); animation: prompt-in .25s ease both; }
-.interaction-prompt__key { width: 37px; height: 37px; display: grid; place-items: center; border-radius: 12px; background: var(--season); color: #fff; font-family: var(--font-display); font-size: 17px; box-shadow: 0 5px 14px color-mix(in srgb, var(--season) 28%, transparent); }
+.interaction-prompt { border: 0; cursor: pointer; text-align: left; font: inherit; color: inherit; position: absolute; left: 50%; bottom: calc(32px + var(--safe-bottom)); z-index: 18; min-width: 230px; display: flex; align-items: center; gap: 11px; padding: 10px 16px 10px 10px; border: 1px solid rgba(255,255,255,.9); border-radius: 18px; background: rgba(255,253,244,.92); box-shadow: 0 16px 42px rgba(48,68,51,.2); transform: translateX(-50%); animation: prompt-in .25s ease both; }
+.interaction-prompt:hover .interaction-prompt__key, .interaction-prompt:focus-visible .interaction-prompt__key { transform: scale(1.07); }
+.interaction-prompt__key { transition: transform .16s ease; width: 37px; height: 37px; display: grid; place-items: center; border-radius: 12px; background: var(--season); color: #fff; font-family: var(--font-display); font-size: 17px; box-shadow: 0 5px 14px color-mix(in srgb, var(--season) 28%, transparent); }
 .interaction-prompt small { display: block; color: var(--soft); font-size: 9px; }
 .interaction-prompt strong { display: block; color: var(--season-ink); font-size: 13px; }
 @keyframes prompt-in { from { opacity: 0; transform: translate(-50%, 8px); } to { opacity: 1; transform: translate(-50%, 0); } }
@@ -243,3 +244,6 @@ kbd {
   .season-tabs::-webkit-scrollbar { display: none; }
   .season-tab small { display: none; }
 }
+.mini-start { min-height: 44px; padding: 9px 20px; border: 0; border-radius: 999px; background: var(--season); color: #fff; font-size: 13px; font-weight: 700; letter-spacing: .08em; cursor: pointer; box-shadow: 0 9px 22px color-mix(in srgb, var(--season) 26%, transparent); }
+.mini-start:hover { transform: translateY(-1px); filter: brightness(1.03); }
+@media (max-width: 640px) { .mini-start { width: 100%; } }

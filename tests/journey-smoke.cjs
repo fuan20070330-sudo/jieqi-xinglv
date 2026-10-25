@@ -33,6 +33,7 @@ const SEASONS = ['spring', 'summer', 'autumn', 'winter'];
   await page.screenshot({ path: path.join(__dirname, 'artifacts', '02-world.png'), fullPage: false });
 
   const seenTypes = new Set();
+  let tutorialsSeen = 0;
   const termResults = [];
   for (const season of SEASONS) {
     await page.evaluate(s => JourneyDebug.enterSeason(s), season);
@@ -43,8 +44,11 @@ const SEASONS = ['spring', 'summer', 'autumn', 'winter'];
       await page.waitForTimeout(80);
       await page.keyboard.press('e');
       await page.waitForSelector('#miniOverlay:not([hidden])');
+      const tutorialShown = await page.evaluate(() => !JourneyDebug.state.mini.started && !document.querySelector('#miniStartBtn').hidden && JourneyDebug.state.mini.elapsed === 0);
+      if (tutorialShown) tutorialsSeen += 1;
+      await page.click('#miniStartBtn');
       await page.waitForTimeout(180);
-      const info = await page.evaluate(() => ({ id: JourneyDebug.state.mini.term.id, type: JourneyDebug.state.mini.type, title: document.querySelector('#miniTitle').textContent }));
+      const info = await page.evaluate(() => ({ id: JourneyDebug.state.mini.term.id, type: JourneyDebug.state.mini.type, title: document.querySelector('#miniTitle').textContent, started: JourneyDebug.state.mini.started }));
       seenTypes.add(info.type);
       if (id === 'lichun') await page.screenshot({ path: path.join(__dirname, 'artifacts', '03-mini.png'), fullPage: false });
       await page.evaluate(() => JourneyDebug.completeCurrentMini());
@@ -98,6 +102,7 @@ const SEASONS = ['spring', 'summer', 'autumn', 'winter'];
 
   const summary = {
     menu,
+    tutorialsSeen,
     movement: { before: beforeMove, after: afterMove, moved: afterMove.x > beforeMove.x },
     typesSeen: [...seenTypes].sort(),
     termsCompleted: termResults.filter(item => item.complete).length,

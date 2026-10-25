@@ -94,9 +94,17 @@
     return completedCount(season) === 6;
   }
 
+  function seasonStars(season) {
+    return seasonTerms(season).reduce((sum, term) => sum + (Number(state.save.stations[term.id]?.stars) || 0), 0);
+  }
+
+  function seasonGatePassed(season) {
+    return seasonStars(season) > 12;
+  }
+
   function seasonUnlocked(season) {
     const index = SEASON_ORDER.indexOf(season);
-    return index === 0 || seasonComplete(SEASON_ORDER[index - 1]);
+    return index === 0 || (seasonComplete(SEASON_ORDER[index - 1]) && seasonGatePassed(SEASON_ORDER[index - 1]));
   }
 
   function firstUnlockedSeason() {
@@ -108,7 +116,7 @@
   }
 
   function allSeasonsComplete() {
-    return SEASON_ORDER.every(seasonComplete);
+    return SEASON_ORDER.every(season => seasonComplete(season) && seasonGatePassed(season));
   }
 
   function stationRecord(termId) {
@@ -133,6 +141,7 @@
       weatherLabel: $('#weatherLabel'),
       worldHelp: $('#worldHelp'),
       prompt: $('#interactionPrompt'),
+      promptLabel: $('#promptLabel'),
       nearStationName: $('#nearStationName'),
       touchControls: $('#touchControls'),
       joystick: $('#joystick'),
@@ -145,6 +154,7 @@
       miniCustom: $('#miniCustom'),
       miniHint: $('#miniHint'),
       miniProgress: $('#miniProgress'),
+      miniStartBtn: $('#miniStartBtn'),
       miniClose: $('#miniClose'),
       chapterOverlay: $('#chapterOverlay'),
       chapterSeal: $('#chapterSeal'),
@@ -224,7 +234,7 @@
       </button>`;
     }).join('');
     els.stationCount.textContent = `${completedCount(state.season)} / 6`;
-    els.starCount.textContent = `★ ${totalStars()}`;
+    els.starCount.textContent = `★ ${seasonStars(state.season)} / 18`;
     els.weatherChip.hidden = state.mode === 'menu';
     els.worldHelp.hidden = state.mode !== 'world';
     setSeasonTheme(state.season);
@@ -238,7 +248,7 @@
       const item = DATA.seasons[season];
       const unlocked = seasonUnlocked(season);
       return `<button class="menu-season ${season === state.season ? 'is-current' : ''}" data-menu-season="${season}" style="--season-color:${item.color}" data-count="${completedCount(season)}/6" ${unlocked ? '' : 'disabled'}>
-        <strong>${item.name}</strong><small>${unlocked ? `${completedCount(season)} / 6 节气碑` : '完成上一季解锁'}</small>
+        <strong>${item.name}</strong><small>${unlocked ? `${completedCount(season)} / 6 · ${seasonStars(season)} / 18 星` : `上一季需超过 12 星`}</small>
       </button>`;
     }).join('');
   }
@@ -331,15 +341,44 @@
     return best;
   }
 
+  function nearPortal() {
+    const meta = DATA.seasons[state.season];
+    return distance(state.player, meta.portal) < 145;
+  }
+
+  function usePortal() {
+    const index = SEASON_ORDER.indexOf(state.season);
+    if (!seasonComplete(state.season)) {
+      showToast(`还有 ${6 - completedCount(state.season)} 个节气碑未完成，先完成本季全部关卡。`);
+      return;
+    }
+    if (!seasonGatePassed(state.season)) {
+      showToast(`本季还需 ${13 - seasonStars(state.season)} 颗星才能开启“往”星门。`);
+      return;
+    }
+    if (index >= SEASON_ORDER.length - 1) {
+      if (allSeasonsComplete()) showFinal();
+      else showToast('先完成其他季节的全部节气碑。');
+      return;
+    }
+    const next = SEASON_ORDER[index + 1];
+    switchSeason(next);
+    showToast(`穿过星门，抵达${DATA.seasons[next].name}之章`);
+  }
+
   function interact() {
     if (state.mode === 'mini') return miniAction();
     if (state.mode !== 'world') return;
     const term = nearestTerm();
-    if (!term) {
-      showToast('靠近一块发光的节气碑，再按 E 互动。');
+    if (term) {
+      openMiniGame(term);
       return;
     }
-    openMiniGame(term);
+    if (nearPortal()) {
+      usePortal();
+      return;
+    }
+    showToast('靠近发光的节气碑或“往”星门，再按 E 互动。');
   }
 
   function roundedRect(ctx, x, y, w, h, radius) {
@@ -517,7 +556,8 @@
   function drawPortal(ctx, season, time) {
     const meta = DATA.seasons[season];
     const point = meta.portal;
-    const ready = seasonComplete(season) && SEASON_ORDER.indexOf(season) < SEASON_ORDER.length - 1;
+    const isLast = SEASON_ORDER.indexOf(season) === SEASON_ORDER.length - 1;
+    const ready = seasonGatePassed(season);
     ctx.save();
     ctx.translate(point.x, point.y);
     ctx.strokeStyle = ready ? meta.bright : 'rgba(255,255,255,.7)';
@@ -533,7 +573,7 @@
     ctx.font = '500 23px "Songti SC", serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText(ready ? '往' : '锁', 0, 2);
+    ctx.fillText(ready ? (isLast ? '卷' : '往') : '锁', 0, 2);
     ctx.restore();
   }
 
@@ -713,17 +753,42 @@
 
   function updatePrompt() {
     const term = nearestTerm();
-    if (state.mode !== 'world' || !term) {
+    if (state.mode !== 'world') {
       els.prompt.hidden = true;
-      state.nearTerm = term;
+      state.nearTerm = null;
       return;
     }
     state.nearTerm = term;
-    const complete = Boolean(stationRecord(term.id)?.complete);
-    els.nearStationName.textContent = `${term.name} · ${term.custom}${complete ? ' · 重玩' : ''}`;
     const key = $('.interaction-prompt__key', els.prompt);
-    if (key) key.textContent = isTouchLike() ? '行' : 'E';
-    els.prompt.hidden = false;
+    if (term) {
+      const complete = Boolean(stationRecord(term.id)?.complete);
+      els.promptLabel.textContent = '靠近节气碑';
+      els.nearStationName.textContent = `${term.name} · ${term.custom}${complete ? ' · 重玩' : ''}`;
+      if (key) key.textContent = isTouchLike() ? '入' : 'E';
+      els.actionBtn.textContent = '入';
+      els.actionBtn.setAttribute('aria-label', `进入${term.name}${term.custom}小游戏`);
+      els.prompt.hidden = false;
+      return;
+    }
+    if (nearPortal()) {
+      const index = SEASON_ORDER.indexOf(state.season);
+      const passed = seasonComplete(state.season) && seasonGatePassed(state.season);
+      const next = SEASON_ORDER[index + 1];
+      const remainingStars = Math.max(0, 13 - seasonStars(state.season));
+      const remainingTerms = 6 - completedCount(state.season);
+      els.promptLabel.textContent = passed ? '星门已开启 · 点击前往' : remainingTerms > 0 ? `还需完成 ${remainingTerms} 个节气碑` : `还需 ${remainingStars} 颗星`;
+      els.nearStationName.textContent = passed
+        ? (next ? `前往${DATA.seasons[next].name}之章` : '展开四季总卷')
+        : '在节气碑重玩，争取更高星级';
+      if (key) key.textContent = '往';
+      els.actionBtn.textContent = '往';
+      els.actionBtn.setAttribute('aria-label', '使用星门前往下一季');
+      els.prompt.hidden = false;
+      return;
+    }
+    els.actionBtn.textContent = '行';
+    els.actionBtn.setAttribute('aria-label', '互动');
+    els.prompt.hidden = true;
   }
 
   function updateWorld(dt) {
@@ -781,7 +846,7 @@
       term, game: term.game, type: term.game.type, elapsed: 0, mistakes: 0,
       finished: false, failed: false, stars: 0, score: 0,
       pointerX: MINI.width / 2, pointerY: MINI.height / 2, pointerActive: false,
-      flash: '', flashTimer: 0, last: performance.now()
+      started: false, flash: '', flashTimer: 0, last: performance.now()
     };
     initializeMini(state.mini);
     els.miniSeason.textContent = `${meta.name}之章 · ${term.name}`;
@@ -789,6 +854,7 @@
     els.miniCustom.textContent = term.custom;
     els.miniHint.textContent = term.game.hint;
     els.miniOverlay.hidden = false;
+    els.miniStartBtn.hidden = false;
     els.prompt.hidden = true;
     setupMiniCanvas();
     state.miniFrame = requestAnimationFrame(loopMini);
@@ -844,14 +910,140 @@
       mini.showClock = 0;
       mini.currentFlash = -1;
       mini.input = [];
+    } else if (mini.type === 'assemble') {
+      mini.pieces = mini.game.pieces.map((piece, index) => ({ ...piece, index, x: 130 + index * 225, y: 455, placed: false }));
+      mini.dragging = null;
+      mini.dragX = 0;
+      mini.dragY = 0;
+      mini.targets = [{ x: 480, y: 170, label: '风筝面' }, { x: 480, y: 268, label: '竹骨' }, { x: 335, y: 336, label: '飘带' }, { x: 625, y: 336, label: '线轴' }];
+    } else if (mini.type === 'weather') {
+      mini.round = 0;
+      mini.weatherPattern = [1, 0, 1, 1, 0, 0];
+      mini.weatherIndex = 0;
+      mini.lockTimer = 0;
+    } else if (mini.type === 'fold') {
+      mini.round = 0;
+      mini.folding = false;
+      mini.foldStart = null;
+      mini.foldDelta = 0;
+      mini.lockTimer = 0;
+    } else if (mini.type === 'salt') {
+      mini.coverage = new Array(mini.game.strips || 3).fill(0);
+      mini.holding = false;
+      mini.activeStrip = -1;
+    } else if (mini.type === 'wipe') {
+      mini.patches = Array.from({ length: mini.game.patches || 6 }, (_, i) => ({ x: 220 + (i % 3) * 260, y: 230 + Math.floor(i / 3) * 150, r: 58, cleared: false }));
+      mini.wiping = false;
+    } else if (mini.type === 'roll') {
+      mini.round = 0;
+      mini.rollAngle = 0;
+      mini.rotations = 0;
+      mini.rolling = false;
+      mini.centers = [{ x: 300, y: 300 }, { x: 480, y: 300 }, { x: 660, y: 300 }];
+    } else if (mini.type === 'pour') {
+      mini.index = 0;
+      mini.dragging = null;
+      mini.dragX = 0;
+      mini.dragY = 0;
+      mini.pot = { x: 480, y: 330, r: 92 };
+    } else if (mini.type === 'sweep') {
+      const random = seededRandom(20261025 + mini.term.id.length);
+      mini.spots = Array.from({ length: mini.game.spots || 8 }, () => ({ x: 180 + random() * 600, y: 150 + random() * 300, r: 28 + random() * 14, cleared: false }));
+      mini.sweeping = false;
+      mini.lastX = 0;
+      mini.lastY = 0;
+    } else if (mini.type === 'duel') {
+      mini.successes = 0;
+      mini.round = 0;
+      mini.opponentX = 310;
+      mini.opponentDir = 1;
+      mini.playerX = MINI.width / 2;
+      mini.lockTimer = 0;
+      mini.finishAt = null;
+    } else if (mini.type === 'pump') {
+      mini.strokes = 0;
+      mini.lastSide = null;
+      mini.pumpPulse = 0;
+      mini.wheelAngle = 0;
+      mini.waterLevel = .18;
+      mini.buttons = [
+        { x: 165, y: 360, w: 190, h: 108, index: 0, label: '左脚' },
+        { x: 605, y: 360, w: 190, h: 108, index: 1, label: '右脚' }
+      ];
+    } else if (mini.type === 'plant') {
+      mini.plots = Array.from({ length: mini.game.slots || 9 }, (_, i) => ({ x: 300 + (i % 3) * 180, y: 180 + Math.floor(i / 3) * 105, planted: false }));
+      mini.dragging = false;
+      mini.planted = 0;
+    } else if (mini.type === 'noodle') {
+      const count = mini.game.points || 17;
+      mini.tracePoints = Array.from({ length: count }, (_, i) => ({ x: 165 + i * (630 / (count - 1)), y: 292 + Math.sin(i * .8) * 82 }));
+      mini.traceIndex = 0;
+      mini.tracing = false;
+      mini.traceMistakes = 0;
+    } else if (mini.type === 'hang') {
+      mini.items = mini.game.items.map((item, index) => ({ ...item, index, x: 155 + index * 130, y: 470, hung: false }));
+      mini.dragging = null;
+      mini.hung = 0;
+    } else if (mini.type === 'lantern') {
+      mini.progress = 0;
+      mini.lanternX = MINI.width / 2;
+      mini.velocity = 0;
+      mini.hits = 0;
+      mini.rockRows = [
+        { progress: .24, x: 280, hit: false },
+        { progress: .45, x: 680, hit: false },
+        { progress: .66, x: 390, hit: false },
+        { progress: .83, x: 620, hit: false }
+      ].slice(0, mini.game.rocks || 4);
+    } else if (mini.type === 'dew') {
+      const count = mini.game.drops || 8;
+      mini.drops = Array.from({ length: count }, (_, i) => ({
+        x: 210 + (i % 4) * 180 + (i % 2) * 18,
+        y: 160 + Math.floor(i / 4) * 210 + (i % 3) * 24,
+        life: 4.2 + (i % 4) * .55,
+        maxLife: 4.2 + (i % 4) * .55,
+        caught: false
+      }));
+      mini.caught = 0;
+      mini.respawnIndex = 0;
+    } else if (mini.type === 'moon') {
+      mini.offsets = [1, 2, 3];
+      mini.rotations = 1;
+      mini.finishAt = null;
+    } else if (mini.type === 'climb') {
+      mini.stones = Array.from({ length: mini.game.stones || 10 }, (_, i) => ({
+        x: 165 + i * 68 + Math.sin(i * 1.2) * 24,
+        y: 465 - i * 37,
+        cleared: false
+      }));
+      mini.nextStone = 0;
+      mini.finishAt = null;
+    } else if (mini.type === 'shake') {
+      mini.treeSway = 0;
+      mini.fruits = mini.game.fruits || 5;
+      mini.shakeCount = 0;
+      mini.shaking = false;
+      mini.lastX = MINI.width / 2;
+      mini.cooldown = 0;
     }
+  }
+
+  function startMiniGame() {
+    const mini = state.mini;
+    if (!mini || mini.started) return;
+    mini.started = true;
+    mini.last = performance.now();
+    els.miniStartBtn.hidden = true;
+    playSound('open');
   }
 
   function restartMini() {
     const mini = state.mini;
     if (!mini) return;
     initializeMini(mini);
+    mini.started = true;
     mini.last = performance.now();
+    els.miniStartBtn.hidden = true;
     setupMiniCanvas();
   }
 
@@ -876,53 +1068,316 @@
     const mini = state.mini;
     if (!mini) return;
     event.preventDefault();
+    if (!mini.started) return;
     const point = miniPoint(event);
-    mini.pointerX = point.x; mini.pointerY = point.y; mini.pointerActive = true;
+    try { els.miniCanvas.setPointerCapture(event.pointerId); } catch (error) {}
+    mini.pointerX = point.x;
+    mini.pointerY = point.y;
+    mini.pointerActive = true;
     if (mini.failed) { restartMini(); return; }
     if (mini.finished) return;
-    if (mini.type === 'rhythm' || mini.type === 'timing') miniAction();
-    else if (mini.type === 'sort') {
+    if (mini.type === 'rhythm' || mini.type === 'timing') { miniAction(); return; }
+    if (mini.type === 'weather') {
+      const button = mini.buttons.find(b => point.x >= b.x && point.x <= b.x + b.w && point.y >= b.y && point.y <= b.y + b.h);
+      if (button) chooseWeather(button.index);
+    } else if (mini.type === 'sort') {
       const button = mini.buttons.find(b => point.x >= b.x && point.x <= b.x + b.w && point.y >= b.y && point.y <= b.y + b.h);
       if (button) chooseSort(button.index);
     } else if (mini.type === 'sequence') {
       const button = mini.buttons.find(b => point.x >= b.x && point.x <= b.x + b.w && point.y >= b.y && point.y <= b.y + b.h);
       if (button) chooseSequence(button.index);
+    } else if (mini.type === 'assemble') {
+      const piece = mini.pieces.find(item => !item.placed && Math.abs(item.x - point.x) < 72 && Math.abs(item.y - point.y) < 40);
+      if (piece) mini.dragging = piece.index;
+    } else if (mini.type === 'pour') {
+      const index = mini.game.ingredients.findIndex((item, i) => i >= mini.index && point.x > 140 + i * 220 && point.x < 280 + i * 220 && point.y > 408 && point.y < 500);
+      if (index >= 0) mini.dragging = index;
+    } else if (mini.type === 'fold') {
+      if (Math.abs(point.x - MINI.width / 2) < 150 && Math.abs(point.y - 270) < 115) {
+        mini.folding = true;
+        mini.foldStart = point.x;
+        mini.foldDelta = 0;
+      }
+    } else if (mini.type === 'salt') {
+      mini.holding = true;
+      mini.activeStrip = point.y > 145 && point.y < 465 ? clamp(Math.floor((point.y - 145) / 115), 0, mini.coverage.length - 1) : -1;
+    } else if (mini.type === 'wipe') {
+      mini.wiping = true;
+      clearWipePatches(mini, point);
+    } else if (mini.type === 'roll') {
+      const center = mini.centers[Math.min(mini.round, mini.centers.length - 1)];
+      if (center && distance(point, center) < 100) {
+        mini.rolling = true;
+        mini.lastAngle = Math.atan2(point.y - center.y, point.x - center.x);
+        mini.rollTotal = 0;
+      }
+    } else if (mini.type === 'sweep') {
+      mini.sweeping = true;
+      mini.lastX = point.x;
+      mini.lastY = point.y;
+    } else if (mini.type === 'duel') {
+      mini.playerX = clamp(point.x, 120, MINI.width - 120);
+      strikeDuel();
+    } else if (mini.type === 'pump') {
+      const button = mini.buttons.find(item => point.x >= item.x && point.x <= item.x + item.w && point.y >= item.y && point.y <= item.y + item.h);
+      if (button) pumpStroke(button.index);
+    } else if (mini.type === 'plant') {
+      if (point.y > 425) mini.dragging = true;
+    } else if (mini.type === 'noodle') {
+      const start = mini.tracePoints[0];
+      if (distance(point, start) < 62) {
+        mini.tracing = true;
+        trailNoodle(point);
+      }
+    } else if (mini.type === 'hang') {
+      const item = mini.items.find(piece => !piece.hung && Math.abs(piece.x - point.x) < 55 && Math.abs(piece.y - point.y) < 55);
+      if (item) mini.dragging = item.index;
+    } else if (mini.type === 'lantern') {
+      mini.velocity += point.x < MINI.width / 2 ? -4.4 : 4.4;
+      mini.flash = point.x < MINI.width / 2 ? '左岸推流' : '右岸推流';
+      mini.flashTimer = .22;
+    } else if (mini.type === 'dew') {
+      collectDew(point);
+    } else if (mini.type === 'moon') {
+      const radius = distance(point, { x: MINI.width / 2, y: 286 });
+      if (radius >= 28 && radius < 82) rotateMoonRing(0);
+      else if (radius >= 82 && radius < 132) rotateMoonRing(1);
+      else if (radius >= 132 && radius < 184) rotateMoonRing(2);
+    } else if (mini.type === 'climb') {
+      const stoneIndex = mini.stones.findIndex(stone => distance(point, stone) < 31);
+      if (stoneIndex >= 0) stepClimb(stoneIndex);
+    } else if (mini.type === 'shake') {
+      if (point.x > 250 && point.x < 710 && point.y > 80 && point.y < 470) {
+        mini.shaking = true;
+        mini.lastX = point.x;
+        mini.shakeTravel = 0;
+      }
     }
   }
 
   function miniPointerMove(event) {
     const mini = state.mini;
-    if (!mini || mini.finished || mini.failed) return;
+    if (!mini || !mini.started || mini.finished || mini.failed) return;
     const point = miniPoint(event);
-    mini.pointerX = point.x; mini.pointerY = point.y;
+    mini.pointerX = point.x;
+    mini.pointerY = point.y;
     if (mini.type === 'collect' || mini.type === 'path') mini.pointerActive = true;
+    if (mini.type === 'duel') mini.playerX = clamp(point.x, 120, MINI.width - 120);
+    if (mini.type === 'noodle' && mini.tracing) trailNoodle(point);
+    if (mini.type === 'shake' && mini.shaking) {
+      const moveX = Math.abs(point.x - mini.lastX);
+      mini.shakeTravel = (mini.shakeTravel || 0) + moveX;
+      mini.treeSway = Math.sin((mini.shakeTravel / 22) * Math.PI) * 5;
+      mini.lastX = point.x;
+      while (mini.shakeTravel >= 145 && mini.fruits > 0) {
+        mini.shakeTravel -= 145;
+        dropPersimmon();
+      }
+    }
+    if (mini.type === 'fold' && mini.folding && mini.foldStart !== null) {
+      mini.foldDelta = point.x - mini.foldStart;
+    }
+    if (mini.type === 'salt' && mini.holding) {
+      mini.activeStrip = point.y > 145 && point.y < 465 ? clamp(Math.floor((point.y - 145) / 115), 0, mini.coverage.length - 1) : -1;
+    }
+    if (mini.type === 'wipe' && mini.wiping) clearWipePatches(mini, point);
+    if (mini.type === 'roll' && mini.rolling) {
+      const center = mini.centers[Math.min(mini.round, mini.centers.length - 1)];
+      if (center) {
+        const angle = Math.atan2(point.y - center.y, point.x - center.x);
+        let delta = angle - mini.lastAngle;
+        if (delta > Math.PI) delta -= TAU;
+        if (delta < -Math.PI) delta += TAU;
+        mini.rollTotal += Math.abs(delta);
+        mini.rollAngle += delta;
+        mini.lastAngle = angle;
+        if (mini.rollTotal >= TAU * .86) {
+          mini.round += 1;
+          mini.rollTotal = 0;
+          mini.flash = '汤圆圆了';
+          mini.flashTimer = .35;
+          playSound('correct');
+          if (mini.round >= mini.game.rounds) finishMini();
+        }
+      }
+    }
+    if (mini.type === 'sweep' && mini.sweeping) {
+      const move = Math.hypot(point.x - mini.lastX, point.y - mini.lastY);
+      if (move > 16) {
+        mini.spots.forEach(spot => {
+          if (!spot.cleared && distance(point, spot) < spot.r + 24) {
+            spot.hits = (spot.hits || 0) + 1;
+            if (spot.hits >= 2) {
+              spot.cleared = true;
+              mini.flash = '扫净了';
+              mini.flashTimer = .25;
+              playSound('tick');
+            }
+          }
+        });
+        mini.lastX = point.x;
+        mini.lastY = point.y;
+      }
+      if (mini.spots.every(spot => spot.cleared)) finishMini();
+    }
   }
 
-  function miniPointerUp() {
-    if (state.mini?.type === 'path') state.mini.pointerActive = false;
+  function clearWipePatches(mini, point) {
+    mini.patches.forEach(patch => {
+      if (!patch.cleared && distance(point, patch) < patch.r + 22) {
+        patch.cleared = true;
+        mini.flash = '雪扫开了';
+        mini.flashTimer = .25;
+        playSound('tick');
+      }
+    });
+    if (mini.patches.every(patch => patch.cleared)) finishMini();
+  }
+
+  function miniPointerUp(event) {
+    const mini = state.mini;
+    if (!mini) return;
+    if (event) {
+      const point = miniPoint(event);
+      mini.pointerX = point.x;
+      mini.pointerY = point.y;
+    }
+    if (mini.type === 'path') mini.pointerActive = false;
+    if (mini.type === 'noodle') mini.tracing = false;
+    if (mini.type === 'shake') mini.shaking = false;
+    if (mini.type === 'plant' && mini.dragging) {
+      const plot = mini.plots.find(item => !item.planted && distance(item, { x: mini.pointerX, y: mini.pointerY }) < 55);
+      if (plot) {
+        plot.planted = true;
+        mini.planted += 1;
+        mini.flash = '栽下一株';
+        mini.flashTimer = .3;
+        playSound('tick');
+        if (mini.planted >= mini.plots.length) finishMini();
+      } else {
+        mini.mistakes += 1;
+        mini.flash = '对准水田格';
+        mini.flashTimer = .3;
+        playSound('error');
+      }
+      mini.dragging = false;
+    }
+    if (mini.type === 'hang' && mini.dragging !== null) {
+      const item = mini.items[mini.dragging];
+      const rack = mini.game.categories.find((category, index) => {
+        const left = index === 0 ? 110 : 540;
+        return mini.pointerX >= left && mini.pointerX <= left + 310 && mini.pointerY >= 130 && mini.pointerY <= 390;
+      });
+      if (rack && rack.cat === item.cat) {
+        item.hung = true;
+        mini.hung += 1;
+        mini.flash = `挂上${rack.name}`;
+        mini.flashTimer = .3;
+        playSound('tick');
+        if (mini.hung >= mini.items.length) finishMini();
+      } else {
+        mini.mistakes += 1;
+        mini.flash = '颜色不匹配';
+        mini.flashTimer = .3;
+        playSound('error');
+      }
+      mini.dragging = null;
+    }
+    if (mini.type === 'assemble' && mini.dragging !== null) {
+      const piece = mini.pieces[mini.dragging];
+      const target = mini.targets.find(item => Math.abs(item.x - mini.pointerX) < 76 && Math.abs(item.y - mini.pointerY) < 76);
+      if (target && target.label === piece.name) {
+        piece.placed = true;
+        mini.flash = '拼上了';
+        mini.flashTimer = .3;
+        playSound('tick');
+        if (mini.pieces.every(item => item.placed)) finishMini();
+      } else {
+        mini.mistakes += 1;
+        mini.flash = '位置不对';
+        mini.flashTimer = .3;
+        playSound('error');
+      }
+      mini.dragging = null;
+    }
+    if (mini.type === 'pour' && mini.dragging !== null) {
+      const distanceToPot = distance({ x: mini.pointerX, y: mini.pointerY }, mini.pot);
+      if (distanceToPot < mini.pot.r + 24 && mini.dragging === mini.index) {
+        mini.index += 1;
+        mini.flash = '下锅了';
+        mini.flashTimer = .3;
+        playSound('tick');
+        if (mini.index >= mini.game.ingredients.length) finishMini();
+      } else {
+        mini.mistakes += 1;
+        mini.flash = '顺序不对';
+        mini.flashTimer = .3;
+        playSound('error');
+      }
+      mini.dragging = null;
+    }
+    if (mini.type === 'fold' && mini.folding) {
+      if (mini.foldDelta > 65) {
+        mini.round += 1;
+        mini.flash = '包好一只';
+        mini.flashTimer = .3;
+        playSound('correct');
+        if (mini.round >= mini.game.rounds) finishMini();
+      } else if (mini.foldDelta < -20) {
+        mini.mistakes += 1;
+        playSound('error');
+      }
+      mini.folding = false;
+      mini.foldStart = null;
+      mini.foldDelta = 0;
+    }
+    if (mini.type === 'salt') mini.holding = false;
+    if (mini.type === 'wipe') mini.wiping = false;
+    if (mini.type === 'roll') mini.rolling = false;
+    if (mini.type === 'sweep') mini.sweeping = false;
   }
 
   function miniAction() {
     const mini = state.mini;
     if (!mini) return;
+    if (!mini.started) { startMiniGame(); return; }
     if (mini.failed) { restartMini(); return; }
     if (mini.finished) return;
     if (mini.type === 'rhythm') hitRhythm();
     else if (mini.type === 'timing') hitTiming();
+    else if (mini.type === 'duel') strikeDuel();
+    else if (mini.type === 'shake') dropPersimmon();
   }
 
   function miniKey(event, key) {
     const mini = state.mini;
     if (!mini) return false;
     if (event.key === 'Escape') { closeMini(false); return true; }
+    if (!mini.started) {
+      if (event.key === ' ' || event.key === 'Enter') { startMiniGame(); return true; }
+      return false;
+    }
     if (mini.failed) {
       if (event.key === ' ' || event.key === 'Enter') { restartMini(); return true; }
       return false;
     }
     if (mini.finished) return true;
-    if (mini.type === 'rhythm' || mini.type === 'timing') {
+    if (mini.type === 'rhythm' || mini.type === 'timing' || mini.type === 'duel' || mini.type === 'shake') {
       if (event.key === ' ' || event.key === 'Enter') { miniAction(); return true; }
     }
+    if (mini.type === 'duel') {
+      if (event.key === 'ArrowLeft' || event.key === 'a' || event.key === 'A') { mini.playerX = clamp(mini.playerX - 42, 120, MINI.width - 120); return true; }
+      if (event.key === 'ArrowRight' || event.key === 'd' || event.key === 'D') { mini.playerX = clamp(mini.playerX + 42, 120, MINI.width - 120); return true; }
+    }
+    if (mini.type === 'pump') {
+      if (event.key === 'a' || event.key === 'A' || event.key === 'ArrowLeft') { pumpStroke(0); return true; }
+      if (event.key === 'd' || event.key === 'D' || event.key === 'ArrowRight') { pumpStroke(1); return true; }
+    }
+    if (mini.type === 'lantern') {
+      if (event.key === 'a' || event.key === 'A' || event.key === 'ArrowLeft') { mini.velocity -= 130; return true; }
+      if (event.key === 'd' || event.key === 'D' || event.key === 'ArrowRight') { mini.velocity += 130; return true; }
+    }
+    if (mini.type === 'weather' && /^[12]$/.test(event.key)) { chooseWeather(Number(event.key) - 1); return true; }
     if (mini.type === 'sort' && /^[1-9]$/.test(event.key)) { chooseSort(Number(event.key) - 1); return true; }
     if (mini.type === 'sequence' && /^[1-9]$/.test(event.key)) { chooseSequence(Number(event.key) - 1); return true; }
     if (mini.type === 'collect') {
@@ -935,7 +1390,6 @@
     }
     return false;
   }
-
   function updateMini(mini, dt) {
     mini.elapsed += dt;
     if (mini.flashTimer > 0) mini.flashTimer -= dt;
@@ -945,6 +1399,18 @@
     else if (mini.type === 'sort') updateSort(mini, dt);
     else if (mini.type === 'path') updatePath(mini, dt);
     else if (mini.type === 'sequence') updateSequence(mini, dt);
+    else if (mini.type === 'weather') updateWeather(mini, dt);
+    else if (mini.type === 'fold') updateFold(mini, dt);
+    else if (mini.type === 'salt') updateSalt(mini, dt);
+    else if (mini.type === 'roll') updateRoll(mini, dt);
+    else if (mini.type === 'duel') updateDuel(mini, dt);
+    else if (mini.type === 'pump') updatePump(mini, dt);
+    else if (mini.type === 'noodle') updateNoodle(mini, dt);
+    else if (mini.type === 'lantern') updateLantern(mini, dt);
+    else if (mini.type === 'dew') updateDew(mini, dt);
+    else if (mini.type === 'moon') updateMoon(mini, dt);
+    else if (mini.type === 'climb') updateClimb(mini, dt);
+    else if (mini.type === 'shake') updateShake(mini, dt);
   }
 
   function failMini(message) {
@@ -959,6 +1425,8 @@
     const mini = state.mini;
     if (!mini || mini.finished) return;
     mini.finished = true;
+    mini.started = true;
+    els.miniStartBtn.hidden = true;
     const stars = mini.mistakes === 0 ? 3 : mini.mistakes <= 2 ? 2 : 1;
     const score = Math.max(250, 1000 - mini.mistakes * 120 - Math.max(0, Math.round(mini.elapsed * 2)));
     mini.stars = stars; mini.score = score;
@@ -1142,6 +1610,192 @@
       mini.flashTimer = .55;
       playSound('error');
     }
+  }
+
+  function strikeDuel() {
+    const mini = state.mini;
+    if (!mini || mini.type !== 'duel' || mini.finished || mini.lockTimer > 0 || mini.finishAt) return;
+    if (Math.abs(mini.playerX - mini.opponentX) < 96) {
+      mini.successes += 1;
+      mini.round = mini.successes;
+      mini.flash = '碰中了';
+      mini.flashTimer = .4;
+      mini.lockTimer = .5;
+      playSound('correct');
+      mini.opponentX = mini.opponentX < MINI.width / 2 ? MINI.width - 220 : 220;
+      if (mini.successes >= (mini.game.rounds || 3)) mini.finishAt = mini.elapsed + .65;
+    } else {
+      mini.mistakes += 1;
+      mini.flash = '差一点，再瞄准';
+      mini.flashTimer = .4;
+      mini.lockTimer = .24;
+      playSound('error');
+    }
+  }
+
+  function updateDuel(mini, dt) {
+    if (mini.lockTimer > 0) mini.lockTimer -= dt;
+    mini.opponentX += mini.opponentDir * dt * 265;
+    if (mini.opponentX > MINI.width - 180) { mini.opponentX = MINI.width - 180; mini.opponentDir = -1; }
+    if (mini.opponentX < 180) { mini.opponentX = 180; mini.opponentDir = 1; }
+    if (mini.finishAt && mini.elapsed >= mini.finishAt) finishMini();
+  }
+
+  function pumpStroke(side) {
+    const mini = state.mini;
+    if (!mini || mini.type !== 'pump' || mini.finished || mini.finishAt) return;
+    if (mini.lastSide === side) {
+      mini.mistakes += 1;
+      mini.flash = '换另一只脚';
+      mini.flashTimer = .35;
+      playSound('error');
+      return;
+    }
+    mini.lastSide = side;
+    mini.strokes += 1;
+    mini.pumpPulse = 1;
+    mini.wheelAngle += Math.PI / 3;
+    mini.waterLevel = Math.min(1, mini.waterLevel + .09);
+    mini.flash = side === 0 ? '左脚踩下' : '右脚踩下';
+    mini.flashTimer = .22;
+    playSound('tick');
+    if (mini.strokes >= (mini.game.strokes || 8)) mini.finishAt = mini.elapsed + .55;
+  }
+
+  function updatePump(mini, dt) {
+    mini.pumpPulse = Math.max(0, mini.pumpPulse - dt * 5);
+    mini.wheelAngle += dt * (mini.strokes > 0 ? .75 : .12);
+    if (mini.finishAt && mini.elapsed >= mini.finishAt) finishMini();
+  }
+
+  function trailNoodle(point) {
+    const mini = state.mini;
+    if (!mini || mini.type !== 'noodle' || !mini.tracing || mini.finished) return;
+    while (mini.traceIndex < mini.tracePoints.length) {
+      const next = mini.tracePoints[mini.traceIndex];
+      if (distance(point, next) > 54) break;
+      mini.traceIndex += 1;
+    }
+    if (mini.traceIndex >= mini.tracePoints.length) {
+      mini.tracing = false;
+      mini.flash = '面条拉成了';
+      mini.flashTimer = .45;
+      playSound('complete');
+      mini.finishAt = mini.elapsed + .55;
+    }
+  }
+
+  function updateNoodle(mini, dt) {
+    if (mini.finishAt && mini.elapsed >= mini.finishAt) finishMini();
+  }
+
+  function updateLantern(mini, dt) {
+    if (mini.finished || mini.failed) return;
+    mini.progress = clamp(mini.progress + dt / 12, 0, 1);
+    mini.velocity *= Math.pow(.2, dt);
+    mini.velocity += Math.sin(mini.elapsed * 1.35) * 4 * dt;
+    mini.lanternX = clamp(mini.lanternX + mini.velocity * dt, 115, MINI.width - 115);
+    mini.rockRows.forEach(rock => {
+      const y = 425 - (rock.progress - mini.progress) * 620;
+      if (!rock.hit && Math.abs(y - 420) < 58 && Math.abs(mini.lanternX - rock.x) < 86) {
+        rock.hit = true;
+        mini.hits += 1;
+        mini.mistakes += 1;
+        mini.lanternX += mini.lanternX < rock.x ? -62 : 62;
+        mini.flash = '触礁了，点岸边调流';
+        mini.flashTimer = .45;
+        playSound('error');
+      }
+    });
+    if (mini.progress >= 1) mini.finishAt = mini.elapsed + .55;
+    if (mini.finishAt && mini.elapsed >= mini.finishAt) finishMini();
+  }
+
+  function collectDew(point) {
+    const mini = state.mini;
+    if (!mini || mini.type !== 'dew' || mini.finished) return;
+    const drop = mini.drops.find(item => !item.caught && item.life > 0 && distance(point, item) < 42);
+    if (!drop) return;
+    drop.caught = true;
+    mini.caught += 1;
+    mini.flash = '露水入盅';
+    mini.flashTimer = .3;
+    playSound('tick');
+    if (mini.caught >= mini.drops.length) mini.finishAt = mini.elapsed + .5;
+  }
+
+  function updateDew(mini, dt) {
+    mini.drops.forEach((drop, index) => {
+      if (drop.caught) return;
+      drop.life -= dt;
+      if (drop.life <= 0) {
+        const turn = mini.respawnIndex + index;
+        mini.respawnIndex += 1;
+        drop.x = 175 + ((turn * 137) % 610);
+        drop.y = 150 + ((turn * 89) % 300);
+        drop.life = 4.4;
+        drop.maxLife = 4.4;
+      }
+    });
+    if (mini.finishAt && mini.elapsed >= mini.finishAt) finishMini();
+  }
+
+  function rotateMoonRing(index) {
+    const mini = state.mini;
+    if (!mini || mini.type !== 'moon' || mini.finished || mini.finishAt) return;
+    const steps = mini.game.steps || 8;
+    mini.offsets[index] = (mini.offsets[index] + steps - 1) % steps;
+    mini.rotations += 1;
+    mini.flash = ['内圈', '中圈', '外圈'][index] + '校准一格';
+    mini.flashTimer = .3;
+    playSound('tick');
+    if (mini.offsets.every(offset => offset === 0)) {
+      mini.flash = '月纹归位';
+      mini.flashTimer = .5;
+      mini.finishAt = mini.elapsed + .65;
+    }
+  }
+
+  function updateMoon(mini, dt) {
+    if (mini.finishAt && mini.elapsed >= mini.finishAt) finishMini();
+  }
+
+  function stepClimb(index) {
+    const mini = state.mini;
+    if (!mini || mini.type !== 'climb' || mini.finished || mini.finishAt) return;
+    if (index === mini.nextStone) {
+      mini.stones[index].cleared = true;
+      mini.nextStone += 1;
+      mini.flash = `第 ${mini.nextStone} 级`;
+      mini.flashTimer = .3;
+      playSound('tick');
+      if (mini.nextStone >= mini.stones.length) mini.finishAt = mini.elapsed + .65;
+    } else {
+      mini.mistakes += 1;
+      mini.flash = '从下一块石阶开始';
+      mini.flashTimer = .35;
+      playSound('error');
+    }
+  }
+
+  function updateClimb(mini, dt) {
+    if (mini.finishAt && mini.elapsed >= mini.finishAt) finishMini();
+  }
+
+  function dropPersimmon() {
+    const mini = state.mini;
+    if (!mini || mini.type !== 'shake' || mini.finished || mini.finishAt || mini.fruits <= 0) return;
+    mini.fruits -= 1;
+    mini.shakeCount += 1;
+    mini.flash = mini.fruits > 0 ? `又落下一颗 · 还剩 ${mini.fruits}` : '柿子落满竹篮';
+    mini.flashTimer = .4;
+    playSound('correct');
+    if (mini.fruits <= 0) mini.finishAt = mini.elapsed + .7;
+  }
+
+  function updateShake(mini, dt) {
+    mini.treeSway *= Math.pow(.035, dt);
+    if (mini.finishAt && mini.elapsed >= mini.finishAt) finishMini();
   }
 
   function drawMiniBackdrop(ctx, mini) {
@@ -1469,6 +2123,286 @@
     miniFlashText(ctx, mini);
   }
 
+  function drawDuel(ctx, mini) {
+    const meta = DATA.seasons[mini.term.season];
+    drawMiniBackdrop(ctx, mini);
+    ctx.fillStyle = meta.ink;
+    ctx.textAlign = 'center';
+    ctx.font = '600 15px "PingFang SC", sans-serif';
+    ctx.fillText('左右移动瞄准线，点击自己的蛋撞向对手', MINI.width / 2, 62);
+    ctx.fillStyle = 'rgba(255,255,255,.72)';
+    roundedRect(ctx, 95, 235, 770, 150, 72); ctx.fill();
+    ctx.strokeStyle = 'rgba(86,93,66,.16)'; ctx.lineWidth = 3; ctx.stroke();
+    ctx.strokeStyle = meta.color; ctx.lineWidth = 4; ctx.setLineDash([10, 9]);
+    ctx.beginPath(); ctx.moveTo(mini.playerX, 140); ctx.lineTo(mini.playerX, 405); ctx.stroke(); ctx.setLineDash([]);
+    const drawEgg = (x, color, glyph) => {
+      ctx.save(); ctx.translate(x, 304);
+      ctx.fillStyle = 'rgba(70,70,50,.12)'; ctx.beginPath(); ctx.ellipse(0, 47, 45, 11, 0, 0, TAU); ctx.fill();
+      ctx.fillStyle = color; ctx.beginPath(); ctx.ellipse(0, 0, 38, 54, 0, 0, TAU); ctx.fill();
+      ctx.strokeStyle = '#fff'; ctx.lineWidth = 3; ctx.stroke();
+      ctx.fillStyle = '#fff'; ctx.font = '600 23px "Songti SC", serif'; ctx.textBaseline = 'middle'; ctx.fillText(glyph, 0, 2);
+      ctx.restore();
+    };
+    drawEgg(mini.opponentX, '#fbf0d1', '对');
+    drawEgg(mini.playerX, meta.color, '我');
+    const close = Math.abs(mini.playerX - mini.opponentX) < 96;
+    miniBadge(ctx, close ? '正对碰撞区 · 点击！' : '调整左右位置', MINI.width / 2, 430, close ? meta.color : 'rgba(72,83,69,.54)');
+    ctx.fillStyle = meta.ink; ctx.font = '600 15px "PingFang SC", sans-serif';
+    ctx.fillText('胜局 ' + mini.successes + ' / ' + (mini.game.rounds || 3), MINI.width / 2, 485);
+    miniFlashText(ctx, mini);
+  }
+
+  function drawPump(ctx, mini) {
+    const meta = DATA.seasons[mini.term.season];
+    drawMiniBackdrop(ctx, mini);
+    ctx.fillStyle = meta.ink; ctx.textAlign = 'center'; ctx.font = '600 15px "PingFang SC", sans-serif';
+    ctx.fillText('左右交替踩踏，不能连续踩同一边', MINI.width / 2, 62);
+    ctx.fillStyle = 'rgba(121,203,226,.5)';
+    roundedRect(ctx, 285, 210, 390, 95, 40); ctx.fill();
+    ctx.save(); ctx.translate(MINI.width / 2, 245);
+    ctx.rotate(mini.wheelAngle);
+    ctx.strokeStyle = meta.ink; ctx.lineWidth = 8;
+    ctx.beginPath(); ctx.arc(0, 0, 62, 0, TAU); ctx.stroke();
+    for (let i = 0; i < 8; i += 1) {
+      ctx.rotate(TAU / 8); ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(0, -62); ctx.stroke();
+    }
+    ctx.restore();
+    ctx.fillStyle = 'rgba(113,197,225,.7)';
+    roundedRect(ctx, 248, 320, 464, 22, 11); ctx.fill();
+    ctx.fillStyle = meta.color;
+    roundedRect(ctx, 248, 320, 464 * mini.waterLevel, 22, 11); ctx.fill();
+    mini.buttons.forEach(button => {
+      const active = mini.lastSide === button.index;
+      roundedRect(ctx, button.x, button.y - mini.pumpPulse * 5, button.w, button.h, 22);
+      ctx.fillStyle = active ? meta.color : 'rgba(255,253,244,.9)'; ctx.fill();
+      ctx.strokeStyle = meta.color; ctx.lineWidth = 3; ctx.stroke();
+      ctx.fillStyle = active ? '#fff' : meta.ink; ctx.font = '600 21px "Songti SC", serif';
+      ctx.fillText(button.label, button.x + button.w / 2, button.y + 43 - mini.pumpPulse * 5);
+      ctx.font = '600 11px "PingFang SC", sans-serif';
+      ctx.fillText(button.index === 0 ? 'A / 左键' : 'D / 右键', button.x + button.w / 2, button.y + 73 - mini.pumpPulse * 5);
+    });
+    ctx.fillStyle = meta.ink; ctx.font = '600 14px "PingFang SC", sans-serif';
+    ctx.fillText('踩踏 ' + mini.strokes + ' / ' + (mini.game.strokes || 8), MINI.width / 2, 520);
+    miniFlashText(ctx, mini);
+  }
+
+  function drawPlant(ctx, mini) {
+    const meta = DATA.seasons[mini.term.season];
+    drawMiniBackdrop(ctx, mini);
+    ctx.fillStyle = meta.ink; ctx.textAlign = 'center'; ctx.font = '600 15px "PingFang SC", sans-serif';
+    ctx.fillText('从秧盘拖出秧苗，填满九块水田格', MINI.width / 2, 62);
+    mini.plots.forEach(plot => {
+      roundedRect(ctx, plot.x - 62, plot.y - 34, 124, 68, 15);
+      ctx.fillStyle = plot.planted ? 'rgba(105,184,100,.9)' : 'rgba(178,230,238,.6)'; ctx.fill();
+      ctx.strokeStyle = plot.planted ? '#fff' : 'rgba(72,134,131,.38)'; ctx.lineWidth = 2; ctx.stroke();
+      ctx.fillStyle = plot.planted ? '#fff' : '#4f7c77'; ctx.font = '600 18px "Songti SC", serif';
+      ctx.fillText(plot.planted ? '秧' : '田', plot.x, plot.y + 5);
+    });
+    ctx.fillStyle = 'rgba(240,210,126,.84)';
+    roundedRect(ctx, 295, 458, 370, 70, 22); ctx.fill();
+    ctx.fillStyle = meta.ink; ctx.font = '600 18px "Songti SC", serif';
+    ctx.fillText('秧  盘', MINI.width / 2, 496);
+    if (mini.dragging) {
+      ctx.fillStyle = meta.color; ctx.beginPath(); ctx.arc(mini.pointerX, mini.pointerY, 24, 0, TAU); ctx.fill();
+      ctx.fillStyle = '#fff'; ctx.font = '600 16px "Songti SC", serif'; ctx.fillText('秧', mini.pointerX, mini.pointerY + 2);
+    }
+    miniFlashText(ctx, mini);
+  }
+
+  function drawNoodle(ctx, mini) {
+    const meta = DATA.seasons[mini.term.season];
+    drawMiniBackdrop(ctx, mini);
+    ctx.fillStyle = meta.ink; ctx.textAlign = 'center'; ctx.font = '600 15px "PingFang SC", sans-serif';
+    ctx.fillText('按住起点，沿虚线拖到终点', MINI.width / 2, 62);
+    ctx.save();
+    ctx.translate(MINI.width / 2, 285);
+    ctx.fillStyle = 'rgba(255,253,244,.86)'; ctx.beginPath(); ctx.ellipse(0, 12, 386, 185, 0, 0, TAU); ctx.fill();
+    ctx.strokeStyle = meta.color; ctx.lineWidth = 8; ctx.stroke();
+    ctx.restore();
+    ctx.strokeStyle = 'rgba(103,112,93,.28)'; ctx.lineWidth = 9; ctx.setLineDash([7, 12]); ctx.lineCap = 'round';
+    ctx.beginPath();
+    mini.tracePoints.forEach((point, index) => { if (index === 0) ctx.moveTo(point.x, point.y); else ctx.lineTo(point.x, point.y); });
+    ctx.stroke(); ctx.setLineDash([]);
+    ctx.strokeStyle = meta.color; ctx.lineWidth = 10;
+    ctx.beginPath();
+    mini.tracePoints.slice(0, mini.traceIndex).forEach((point, index) => { if (index === 0) ctx.moveTo(point.x, point.y); else ctx.lineTo(point.x, point.y); });
+    ctx.stroke();
+    const start = mini.tracePoints[0];
+    ctx.fillStyle = meta.color; ctx.beginPath(); ctx.arc(start.x, start.y, 15, 0, TAU); ctx.fill();
+    const end = mini.tracePoints[mini.tracePoints.length - 1];
+    ctx.fillStyle = mini.traceIndex >= mini.tracePoints.length ? meta.color : 'rgba(255,255,255,.88)';
+    ctx.beginPath(); ctx.arc(end.x, end.y, 20, 0, TAU); ctx.fill();
+    ctx.strokeStyle = meta.color; ctx.lineWidth = 3; ctx.stroke();
+    ctx.fillStyle = meta.ink; ctx.font = '600 12px "PingFang SC", sans-serif';
+    ctx.fillText('拖', start.x, start.y + 36);
+    ctx.fillText('完成 ' + mini.traceIndex + ' / ' + mini.tracePoints.length, MINI.width / 2, 520);
+    miniFlashText(ctx, mini);
+  }
+
+  function drawHang(ctx, mini) {
+    const meta = DATA.seasons[mini.term.season];
+    drawMiniBackdrop(ctx, mini);
+    ctx.fillStyle = meta.ink; ctx.textAlign = 'center'; ctx.font = '600 15px "PingFang SC", sans-serif';
+    ctx.fillText('把作物拖进同色晒架', MINI.width / 2, 60);
+    mini.game.categories.forEach((category, index) => {
+      const x = index === 0 ? 110 : 540;
+      ctx.fillStyle = index === 0 ? 'rgba(215,91,65,.2)' : 'rgba(232,174,61,.23)';
+      roundedRect(ctx, x, 130, 310, 260, 24); ctx.fill();
+      ctx.strokeStyle = index === 0 ? '#cf654c' : '#d3a13b'; ctx.lineWidth = 3; ctx.stroke();
+      ctx.fillStyle = index === 0 ? '#ad4c38' : '#946d1e'; ctx.font = '600 22px "Songti SC", serif';
+      ctx.fillText(category.name, x + 155, 170);
+      for (let i = 0; i < 3; i += 1) {
+        ctx.strokeStyle = 'rgba(100,74,42,.28)'; ctx.lineWidth = 3;
+        ctx.beginPath(); ctx.moveTo(x + 34, 220 + i * 57); ctx.lineTo(x + 276, 220 + i * 57); ctx.stroke();
+      }
+    });
+    mini.items.forEach(item => {
+      if (item.hung) {
+        const side = item.cat === 0 ? 110 : 540;
+        const slot = mini.items.slice(0, item.index).filter(piece => piece.cat === item.cat).length;
+        ctx.fillStyle = item.cat === 0 ? '#d75b41' : '#e3ad3e';
+        ctx.beginPath(); ctx.arc(side + 90 + slot * 67, 218 + (slot % 2) * 70, 23, 0, TAU); ctx.fill();
+        ctx.fillStyle = '#fff'; ctx.font = '600 14px "Songti SC", serif'; ctx.fillText(item.glyph, side + 90 + slot * 67, 223 + (slot % 2) * 70);
+      }
+    });
+    mini.items.forEach(item => {
+      if (item.hung) return;
+      roundedRect(ctx, item.x - 31, item.y - 31, 62, 62, 17);
+      ctx.fillStyle = 'rgba(255,253,244,.92)'; ctx.fill();
+      ctx.strokeStyle = item.cat === 0 ? '#d75b41' : '#d3a13b'; ctx.lineWidth = 2; ctx.stroke();
+      ctx.fillStyle = meta.ink; ctx.font = '600 18px "Songti SC", serif'; ctx.fillText(item.glyph, item.x, item.y + 3);
+    });
+    if (mini.dragging !== null) {
+      const item = mini.items[mini.dragging];
+      ctx.fillStyle = item.cat === 0 ? '#d75b41' : '#d3a13b';
+      ctx.beginPath(); ctx.arc(mini.pointerX, mini.pointerY, 28, 0, TAU); ctx.fill();
+      ctx.fillStyle = '#fff'; ctx.font = '600 16px "Songti SC", serif'; ctx.fillText(item.glyph, mini.pointerX, mini.pointerY + 2);
+    }
+    miniFlashText(ctx, mini);
+  }
+
+  function drawLantern(ctx, mini) {
+    const meta = DATA.seasons[mini.term.season];
+    drawMiniBackdrop(ctx, mini);
+    ctx.fillStyle = 'rgba(90,190,211,.43)';
+    roundedRect(ctx, 70, 105, 820, 385, 38); ctx.fill();
+    for (let i = 0; i < 6; i += 1) {
+      ctx.strokeStyle = 'rgba(255,255,255,.34)'; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.moveTo(105, 160 + i * 55 + Math.sin(mini.elapsed + i) * 8); ctx.lineTo(855, 160 + i * 55 + Math.cos(mini.elapsed + i) * 8); ctx.stroke();
+    }
+    mini.rockRows.forEach(rock => {
+      const y = 425 - (rock.progress - mini.progress) * 620;
+      if (y < 100 || y > 510) return;
+      ctx.fillStyle = '#71817e'; ctx.beginPath(); ctx.ellipse(rock.x, y, 53, 30, 0, 0, TAU); ctx.fill();
+      ctx.fillStyle = 'rgba(255,255,255,.35)'; ctx.font = '600 15px "Songti SC", serif'; ctx.fillText('礁', rock.x, y + 5);
+    });
+    ctx.save(); ctx.translate(mini.lanternX, 420);
+    ctx.fillStyle = 'rgba(231,90,51,.9)'; ctx.beginPath(); ctx.ellipse(0, 0, 32, 22, 0, 0, TAU); ctx.fill();
+    ctx.fillStyle = '#ffe8a7'; ctx.beginPath(); ctx.arc(0, -3, 10, 0, TAU); ctx.fill();
+    ctx.strokeStyle = meta.color; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(-20, 20); ctx.lineTo(20, 20); ctx.stroke();
+    ctx.restore();
+    roundedRect(ctx, 80, 458, 335, 72, 18); ctx.fillStyle = 'rgba(255,255,255,.78)'; ctx.fill();
+    roundedRect(ctx, 545, 458, 335, 72, 18); ctx.fill();
+    ctx.fillStyle = meta.ink; ctx.font = '600 18px "PingFang SC", sans-serif';
+    ctx.fillText('← 点左岸推流', 247, 501); ctx.fillText('点右岸推流 →', 712, 501);
+    ctx.fillStyle = '#748178'; ctx.font = '600 13px "PingFang SC", sans-serif';
+    ctx.fillText('行程 ' + Math.round(mini.progress * 100) + '% · 触礁 ' + mini.hits, MINI.width / 2, 90);
+    miniFlashText(ctx, mini);
+  }
+
+  function drawDew(ctx, mini) {
+    const meta = DATA.seasons[mini.term.season];
+    drawMiniBackdrop(ctx, mini);
+    ctx.fillStyle = meta.ink; ctx.textAlign = 'center'; ctx.font = '600 15px "PingFang SC", sans-serif';
+    ctx.fillText('露珠消失前逐颗点入瓷盅', MINI.width / 2, 60);
+    ctx.fillStyle = 'rgba(117,179,117,.42)';
+    for (let i = 0; i < 5; i += 1) {
+      ctx.save(); ctx.translate(190 + i * 155, 335 + (i % 2) * 35); ctx.rotate((i - 2) * .18);
+      ctx.beginPath(); ctx.ellipse(0, 0, 105, 42, 0, 0, TAU); ctx.fill(); ctx.restore();
+    }
+    mini.drops.forEach(drop => {
+      if (drop.caught) return;
+      const alpha = .35 + Math.max(0, drop.life / drop.maxLife) * .65;
+      ctx.globalAlpha = alpha;
+      ctx.fillStyle = '#d9f7ff'; ctx.beginPath(); ctx.arc(drop.x, drop.y, 20, 0, TAU); ctx.fill();
+      ctx.strokeStyle = '#76b9c9'; ctx.lineWidth = 2; ctx.stroke();
+      ctx.globalAlpha = 1;
+    });
+    ctx.fillStyle = 'rgba(255,253,244,.86)'; ctx.beginPath(); ctx.ellipse(820, 460, 70, 30, 0, 0, TAU); ctx.fill();
+    ctx.strokeStyle = meta.color; ctx.lineWidth = 3; ctx.stroke();
+    ctx.fillStyle = meta.ink; ctx.font = '600 15px "Songti SC", serif'; ctx.fillText('盅', 820, 465);
+    ctx.fillStyle = meta.ink; ctx.font = '600 14px "PingFang SC", sans-serif';
+    ctx.fillText('清露 ' + mini.caught + ' / ' + mini.drops.length, MINI.width / 2, 525);
+    miniFlashText(ctx, mini);
+  }
+
+  function drawMoon(ctx, mini) {
+    const meta = DATA.seasons[mini.term.season];
+    drawMiniBackdrop(ctx, mini);
+    ctx.fillStyle = meta.ink; ctx.textAlign = 'center'; ctx.font = '600 15px "PingFang SC", sans-serif';
+    ctx.fillText('点击三圈礼盘，把月纹转到正上方刻度', MINI.width / 2, 58);
+    ctx.save(); ctx.translate(MINI.width / 2, 286);
+    const radii = [60, 110, 160];
+    radii.forEach((radius, ring) => {
+      ctx.fillStyle = ring === 2 ? 'rgba(255,246,208,.72)' : 'rgba(255,255,255,.62)';
+      ctx.beginPath(); ctx.arc(0, 0, radius + 24, 0, TAU); ctx.fill();
+      ctx.strokeStyle = ring === 0 ? '#d3a13b' : ring === 1 ? '#bd8c36' : '#956f2b'; ctx.lineWidth = 4;
+      ctx.beginPath(); ctx.arc(0, 0, radius, 0, TAU); ctx.stroke();
+      const angle = -Math.PI / 2 + mini.offsets[ring] * (TAU / (mini.game.steps || 8));
+      ctx.fillStyle = ring === 2 ? '#d5a03a' : '#b98530';
+      ctx.beginPath(); ctx.arc(Math.cos(angle) * radius, Math.sin(angle) * radius, 15, 0, TAU); ctx.fill();
+      ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.stroke();
+    });
+    ctx.strokeStyle = meta.ink; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(0, -205); ctx.lineTo(0, -176); ctx.stroke();
+    ctx.fillStyle = meta.ink; ctx.font = '600 13px "PingFang SC", sans-serif'; ctx.fillText('刻度', 0, -214);
+    ctx.restore();
+    ctx.fillStyle = meta.ink; ctx.font = '600 15px "PingFang SC", sans-serif';
+    ctx.fillText('对准圈数 ' + mini.offsets.filter(offset => offset === 0).length + ' / 3', MINI.width / 2, 515);
+    miniFlashText(ctx, mini);
+  }
+
+  function drawClimb(ctx, mini) {
+    const meta = DATA.seasons[mini.term.season];
+    drawMiniBackdrop(ctx, mini);
+    ctx.fillStyle = 'rgba(96,135,91,.34)'; ctx.beginPath(); ctx.moveTo(0, 560); ctx.lineTo(280, 80); ctx.lineTo(670, 560); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = 'rgba(238,219,143,.36)'; ctx.beginPath(); ctx.moveTo(410, 560); ctx.lineTo(710, 80); ctx.lineTo(960, 560); ctx.closePath(); ctx.fill();
+    mini.stones.forEach((stone, index) => {
+      const next = index === mini.nextStone;
+      ctx.fillStyle = stone.cleared ? meta.color : next ? '#fff4c9' : 'rgba(255,253,244,.8)';
+      ctx.beginPath(); ctx.ellipse(stone.x, stone.y, 29, 17, 0, 0, TAU); ctx.fill();
+      ctx.strokeStyle = next ? '#b87c27' : 'rgba(83,105,78,.32)'; ctx.lineWidth = next ? 4 : 2; ctx.stroke();
+      ctx.fillStyle = stone.cleared ? '#fff' : meta.ink; ctx.font = '600 12px "PingFang SC", sans-serif';
+      ctx.fillText(index + 1, stone.x, stone.y + 4);
+    });
+    ctx.fillStyle = meta.ink; ctx.textAlign = 'center'; ctx.font = '600 15px "PingFang SC", sans-serif';
+    ctx.fillText('按顺序点击发光的下一块石阶', MINI.width / 2, 520);
+    miniFlashText(ctx, mini);
+  }
+
+  function drawShake(ctx, mini) {
+    const meta = DATA.seasons[mini.term.season];
+    drawMiniBackdrop(ctx, mini);
+    ctx.fillStyle = meta.ink; ctx.textAlign = 'center'; ctx.font = '600 15px "PingFang SC", sans-serif';
+    ctx.fillText('按住树干左右快速摇动，让柿子落入竹篮', MINI.width / 2, 58);
+    ctx.save(); ctx.translate(MINI.width / 2, 315); ctx.rotate((mini.treeSway || 0) * Math.PI / 180);
+    ctx.fillStyle = '#8b6038'; roundedRect(ctx, -20, -60, 40, 265, 14); ctx.fill();
+    ctx.fillStyle = 'rgba(255,255,255,.08)'; ctx.beginPath(); ctx.arc(-80, -90, 96, 0, TAU); ctx.fill();
+    ctx.fillStyle = '#df9334';
+    for (let i = 0; i < mini.fruits; i += 1) {
+      const angle = -Math.PI * .88 + i * .45;
+      const x = Math.cos(angle) * (82 + (i % 3) * 28); const y = -90 + Math.sin(angle) * (75 + (i % 2) * 20);
+      ctx.beginPath(); ctx.arc(x, y, 18, 0, TAU); ctx.fill();
+      ctx.fillStyle = '#fff3d0'; ctx.font = '600 11px "Songti SC", serif'; ctx.fillText('柿', x, y + 4); ctx.fillStyle = '#df9334';
+    }
+    ctx.restore();
+    ctx.fillStyle = 'rgba(240,208,123,.75)'; ctx.beginPath(); ctx.ellipse(720, 470, 90, 30, 0, 0, TAU); ctx.fill();
+    ctx.strokeStyle = meta.color; ctx.lineWidth = 4; ctx.stroke();
+    ctx.fillStyle = meta.ink; ctx.font = '600 16px "PingFang SC", serif'; ctx.fillText('竹篮', 720, 476);
+    ctx.fillStyle = '#748178'; ctx.font = '600 13px "PingFang SC", sans-serif';
+    ctx.fillText('已摇下 ' + mini.shakeCount + ' / ' + (mini.game.fruits || 5), MINI.width / 2, 522);
+    miniFlashText(ctx, mini);
+  }
+
   function drawMiniCompletion(ctx, mini) {
     ctx.save();
     ctx.fillStyle = 'rgba(255,253,244,.84)';
@@ -1496,6 +2430,76 @@
     ctx.restore();
   }
 
+  function drawMiniTutorial(ctx, mini) {
+    const meta = DATA.seasons[mini.term.season];
+    drawMiniBackdrop(ctx, mini);
+    const typeSteps = {
+      collect: ['移动容器', '接住目标', '避开干扰'],
+      sequence: ['观看亮起', '记住顺序', '依次点回'],
+      rhythm: ['看节拍环', '收拢时点击', '连续命中'],
+      timing: ['观察游标', '进入绿区', '点击停下'],
+      sort: ['看清物件', '选择类别', '完成分类'],
+      path: ['左右操控', '收集目标', '避开障碍'],
+      assemble: ['拖动部件', '对准轮廓', '拼好纸鸢'],
+      weather: ['看天空变化', '选择晒或收', '连续判断'],
+      fold: ['按住面皮', '向中心折合', '捏紧饺子'],
+      salt: ['按住盐罐', '来回拖动', '覆盖肉条'],
+      wipe: ['按住扫帚', '拖过积雪', '清出道路'],
+      roll: ['按住面团', '画圈搓动', '做圆汤圆'],
+      pour: ['按序选料', '拖进粥锅', '熬成暖粥'],
+      sweep: ['快速划过', '扫起尘团', '清空角落'],
+      duel: ['左右瞄准', '点击碰蛋', '赢下三局'],
+      pump: ['交替踩踏', '推动水车', '灌满水田'],
+      plant: ['拖出秧苗', '对准田格', '栽满九格'],
+      noodle: ['按住面头', '沿虚线拖动', '拉出长面'],
+      hang: ['分清红黄', '拖到同色架', '晒满秋色'],
+      lantern: ['看准礁石', '点击两岸', '推灯到岸'],
+      dew: ['露珠将散', '逐颗点击', '收满八滴'],
+      moon: ['观察月纹', '点击礼盘', '三圈归位'],
+      climb: ['从低到高', '依次踏石', '登上山亭'],
+      shake: ['按住树干', '左右摇动', '收满柿子']
+    }[mini.type] || ['观察场景', '完成动作', '点亮节气'];
+    ctx.fillStyle = meta.ink;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.font = '500 48px "Songti SC", "STSong", serif';
+    ctx.fillText(mini.term.custom, MINI.width / 2, 104);
+    ctx.fillStyle = meta.color;
+    ctx.font = '600 15px "PingFang SC", "Microsoft YaHei", sans-serif';
+    ctx.fillText(mini.game.title, MINI.width / 2, 147);
+    ctx.save();
+    ctx.translate(MINI.width / 2, 267);
+    ctx.fillStyle = meta.pale;
+    ctx.beginPath();
+    ctx.arc(0, 0, 88, 0, TAU);
+    ctx.fill();
+    ctx.strokeStyle = meta.color;
+    ctx.lineWidth = 4;
+    ctx.stroke();
+    ctx.fillStyle = meta.ink;
+    ctx.font = '500 54px "Songti SC", serif';
+    ctx.fillText(mini.term.glyph, 0, 5);
+    ctx.restore();
+    typeSteps.forEach((step, index) => {
+      const x = 195 + index * 210;
+      roundedRect(ctx, x, 392, 180, 76, 18);
+      ctx.fillStyle = index === 2 ? meta.color : 'rgba(255,255,255,.78)';
+      ctx.fill();
+      ctx.strokeStyle = meta.color;
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      ctx.fillStyle = index === 2 ? '#fff' : meta.ink;
+      ctx.font = '600 12px "PingFang SC", sans-serif';
+      ctx.fillText(`${index + 1}. ${step}`, x + 90, 430);
+    });
+    ctx.fillStyle = meta.ink;
+    ctx.font = '600 14px "PingFang SC", "Microsoft YaHei", sans-serif';
+    ctx.fillText(mini.game.hint, MINI.width / 2, 344);
+    ctx.fillStyle = '#7a857b';
+    ctx.font = '600 11px "PingFang SC", sans-serif';
+    ctx.fillText('先阅读教程，点击“确定，开始”后才计时与互动', MINI.width / 2, 500);
+  }
+
   function drawMini(mini) {
     const ctx = miniContext();
     if (mini.type === 'collect') drawCollect(ctx, mini);
@@ -1503,12 +2507,31 @@
     else if (mini.type === 'timing') drawTiming(ctx, mini);
     else if (mini.type === 'sort') drawSort(ctx, mini);
     else if (mini.type === 'path') drawPath(ctx, mini);
-    else drawSequence(ctx, mini);
+    else if (mini.type === 'sequence') drawSequence(ctx, mini);
+    else if (mini.type === 'assemble') drawAssemble(ctx, mini);
+    else if (mini.type === 'weather') drawWeatherGame(ctx, mini);
+    else if (mini.type === 'fold') drawFold(ctx, mini);
+    else if (mini.type === 'salt') drawSalt(ctx, mini);
+    else if (mini.type === 'wipe') drawWipe(ctx, mini);
+    else if (mini.type === 'roll') drawRoll(ctx, mini);
+    else if (mini.type === 'pour') drawPour(ctx, mini);
+    else if (mini.type === 'sweep') drawSweep(ctx, mini);
+    else if (mini.type === 'duel') drawDuel(ctx, mini);
+    else if (mini.type === 'pump') drawPump(ctx, mini);
+    else if (mini.type === 'plant') drawPlant(ctx, mini);
+    else if (mini.type === 'noodle') drawNoodle(ctx, mini);
+    else if (mini.type === 'hang') drawHang(ctx, mini);
+    else if (mini.type === 'lantern') drawLantern(ctx, mini);
+    else if (mini.type === 'dew') drawDew(ctx, mini);
+    else if (mini.type === 'moon') drawMoon(ctx, mini);
+    else if (mini.type === 'climb') drawClimb(ctx, mini);
+    else if (mini.type === 'shake') drawShake(ctx, mini);
     if (mini.finished || mini.failed) drawMiniCompletion(ctx, mini);
     updateMiniProgress(mini);
   }
 
   function updateMiniProgress(mini) {
+    if (!mini.started) { els.miniProgress.textContent = '教程'; return; }
     let text = '';
     if (mini.type === 'collect') text = `${mini.collected} / ${mini.targetCount}`;
     else if (mini.type === 'rhythm') text = `命中 ${mini.goodHits} / ${mini.beats.length}`;
@@ -1516,6 +2539,24 @@
     else if (mini.type === 'sort') text = `${Math.min(mini.index, mini.game.items.length)} / ${mini.game.items.length}`;
     else if (mini.type === 'path') text = `${mini.collected} / ${mini.targetCount} · ${Math.round(mini.progress * 100)}%`;
     else if (mini.type === 'sequence') text = mini.phase === 'show' ? '记忆顺序' : `${mini.input.length} / ${mini.game.sequence.length}`;
+    else if (mini.type === 'assemble') text = `${mini.pieces.filter(piece => piece.placed).length} / ${mini.pieces.length}`;
+    else if (mini.type === 'weather') text = `${mini.round} / ${mini.weatherPattern.length}`;
+    else if (mini.type === 'fold') text = `${mini.round} / ${mini.game.rounds}`;
+    else if (mini.type === 'salt') text = `覆盖 ${Math.round(mini.coverage.reduce((a,b)=>a+b,0) / mini.coverage.length * 100)}%`;
+    else if (mini.type === 'wipe') text = `${mini.patches.filter(p => p.cleared).length} / ${mini.patches.length}`;
+    else if (mini.type === 'roll') text = `${mini.round} / ${mini.game.rounds}`;
+    else if (mini.type === 'pour') text = `${mini.index} / ${mini.game.ingredients.length}`;
+    else if (mini.type === 'sweep') text = `${mini.spots.filter(s => s.cleared).length} / ${mini.spots.length}`;
+    else if (mini.type === 'duel') text = `胜局 ${mini.successes} / ${mini.game.rounds}`;
+    else if (mini.type === 'pump') text = `踩踏 ${mini.strokes} / ${mini.game.strokes}`;
+    else if (mini.type === 'plant') text = `秧苗 ${mini.planted} / ${mini.plots.length}`;
+    else if (mini.type === 'noodle') text = `拉面 ${mini.traceIndex} / ${mini.tracePoints.length}`;
+    else if (mini.type === 'hang') text = `挂晒 ${mini.hung} / ${mini.items.length}`;
+    else if (mini.type === 'lantern') text = `河程 ${Math.round(mini.progress * 100)}%`;
+    else if (mini.type === 'dew') text = `清露 ${mini.caught} / ${mini.drops.length}`;
+    else if (mini.type === 'moon') text = `归位 ${mini.offsets.filter(offset => offset === 0).length} / 3`;
+    else if (mini.type === 'climb') text = `石阶 ${mini.nextStone} / ${mini.stones.length}`;
+    else if (mini.type === 'shake') text = `柿子 ${mini.shakeCount} / ${mini.game.fruits}`;
     els.miniProgress.textContent = text;
   }
 
@@ -1524,9 +2565,14 @@
     if (!mini) return;
     const dt = Math.min(.034, Math.max(0, (timestamp - mini.last) / 1000));
     mini.last = timestamp;
-    if (!mini.finished && !mini.failed) updateMini(mini, dt);
-    else mini.elapsed += dt;
-    drawMini(mini);
+    if (!mini.started) {
+      drawMiniTutorial(miniContext(), mini);
+      updateMiniProgress(mini);
+    } else {
+      if (!mini.finished && !mini.failed) updateMini(mini, dt);
+      else mini.elapsed += dt;
+      drawMini(mini);
+    }
     state.miniFrame = requestAnimationFrame(loopMini);
   }
 
@@ -1590,17 +2636,22 @@
   }
 
   function maybeShowChapter(season) {
-    if (!seasonComplete(season) || state.save.chapterCelebrated[season]) return;
+    if (!seasonComplete(season)) return;
+    if (!seasonGatePassed(season)) {
+      showToast(`本季 ${seasonStars(season)} / 18 星，超过 12 星才能打开“往”星门。点击节气碑可重玩提升星级。`);
+      return;
+    }
+    if (state.save.chapterCelebrated[season]) return;
     state.save.chapterCelebrated[season] = true;
     persist();
     const meta = DATA.seasons[season];
-    const seasonStarCount = seasonTerms(season).reduce((sum, term) => sum + (state.save.stations[term.id]?.stars || 0), 0);
+    const stars = seasonStars(season);
     const index = SEASON_ORDER.indexOf(season);
     els.chapterSeal.textContent = meta.name;
     els.chapterKicker.textContent = meta.title;
-    els.chapterTitle.textContent = '这一季的节气碑都亮了';
-    els.chapterStars.textContent = `${'★'.repeat(Math.floor(seasonStarCount / 6))}  ${seasonStarCount} / 18 星`;
-    els.chapterCopy.textContent = `${meta.subtitle}。你完成了 ${meta.name}季的全部 6 个习俗小游戏。`;
+    els.chapterTitle.textContent = '星门已经开启';
+    els.chapterStars.textContent = `${'★'.repeat(Math.max(1, Math.round(stars / 6)))}  ${stars} / 18 星`;
+    els.chapterCopy.textContent = `${meta.subtitle}。你完成了 ${meta.name}季的全部 6 个习俗小游戏，并取得超过三分之二的总星数。`;
     if (index < SEASON_ORDER.length - 1) {
       els.nextSeasonBtn.textContent = `前往${DATA.seasons[SEASON_ORDER[index + 1]].name}之章`;
       els.nextSeasonBtn.dataset.next = SEASON_ORDER[index + 1];
@@ -1657,7 +2708,9 @@
     els.menuBtn.addEventListener('click', () => returnToMenu());
     els.soundBtn.addEventListener('click', toggleSound);
     els.actionBtn.addEventListener('pointerdown', event => { event.preventDefault(); interact(); });
+    els.prompt.addEventListener('click', event => { event.preventDefault(); interact(); });
     els.miniClose.addEventListener('click', () => closeMini(false));
+    els.miniStartBtn.addEventListener('click', startMiniGame);
     els.staySeasonBtn.addEventListener('click', () => { els.chapterOverlay.hidden = true; });
     els.nextSeasonBtn.addEventListener('click', () => {
       const next = els.nextSeasonBtn.dataset.next;
@@ -1787,7 +2840,15 @@
     state,
     completeCurrentMini: () => { if (state.mini && !state.mini.finished) finishMini(); },
     showFinalOverlay: () => showFinal(),
-    enterSeason: season => { state.season = season; enterWorld(season); },
+    canEnterSeason: season => seasonUnlocked(season),
+    enterSeason: season => enterWorld(season),
+    teleportToPortal: () => {
+      const meta = DATA.seasons[state.season];
+      state.player.x = meta.portal.x;
+      state.player.y = meta.portal.y;
+      updateCamera(true);
+      updatePrompt();
+    },
     teleportToTerm: id => {
       const term = TERM_BY_ID[id];
       if (!term) return;
@@ -1798,4 +2859,241 @@
     },
     getData: () => DATA
   };
+
+
+  /* New interaction modes keep each season's six stations mechanically distinct. */
+  function updateWeather(mini, dt) {
+    if (mini.lockTimer > 0) mini.lockTimer -= dt;
+    if (mini.finishAt && mini.elapsed >= mini.finishAt) finishMini();
+  }
+
+  function chooseWeather(index) {
+    const mini = state.mini;
+    if (!mini || mini.type !== 'weather' || mini.finished || mini.lockTimer > 0) return;
+    const expected = mini.weatherPattern[mini.weatherIndex] === 1 ? 0 : 1;
+    if (index === expected) { mini.flash = index === 0 ? '晒得正好' : '及时收回'; mini.flashTimer = .35; playSound('correct'); }
+    else { mini.mistakes += 1; mini.flash = '再看一眼天空'; mini.flashTimer = .35; playSound('error'); }
+    mini.weatherIndex += 1;
+    mini.round = mini.weatherIndex;
+    mini.lockTimer = .45;
+    if (mini.weatherIndex >= mini.weatherPattern.length) mini.finishAt = mini.elapsed + .55;
+  }
+
+  function updateFold(mini, dt) {
+    if (mini.lockTimer > 0) mini.lockTimer -= dt;
+  }
+
+  function updateSalt(mini, dt) {
+    if (mini.holding && mini.activeStrip >= 0 && mini.activeStrip < mini.coverage.length) {
+      mini.coverage[mini.activeStrip] = clamp(mini.coverage[mini.activeStrip] + dt * 1.6, 0, 1);
+      if (mini.coverage.every(value => value >= .82)) finishMini();
+    }
+  }
+
+  function updateRoll(mini, dt) {
+    // Circular gesture is tracked through pointer movement.
+  }
+
+  function drawAssemble(ctx, mini) {
+    const meta = DATA.seasons[mini.term.season];
+    drawMiniBackdrop(ctx, mini);
+    ctx.save();
+    ctx.translate(480, 255);
+    ctx.strokeStyle = meta.color;
+    ctx.lineWidth = 3;
+    ctx.setLineDash([9, 8]);
+    ctx.beginPath(); ctx.moveTo(0,-88); ctx.lineTo(92,0); ctx.lineTo(0,88); ctx.lineTo(-92,0); ctx.closePath(); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = 'rgba(255,255,255,.55)';
+    ctx.fill();
+    ctx.restore();
+    mini.targets.forEach(target => {
+      ctx.fillStyle = 'rgba(255,255,255,.78)';
+      ctx.beginPath(); ctx.arc(target.x, target.y, 45, 0, TAU); ctx.fill();
+      ctx.strokeStyle = meta.color; ctx.lineWidth = 2; ctx.stroke();
+      ctx.fillStyle = meta.ink;
+      ctx.font = '600 15px "PingFang SC", sans-serif';
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(target.label, target.x, target.y + 3);
+    });
+    mini.pieces.forEach(piece => {
+      if (piece.placed) return;
+      const x = mini.dragging === piece.index ? mini.pointerX : piece.x;
+      const y = mini.dragging === piece.index ? mini.pointerY : piece.y;
+      roundedRect(ctx, x - 66, y - 34, 132, 68, 16);
+      ctx.fillStyle = mini.dragging === piece.index ? meta.pale : 'rgba(255,255,255,.92)'; ctx.fill();
+      ctx.strokeStyle = meta.color; ctx.lineWidth = 2; ctx.stroke();
+      ctx.fillStyle = meta.ink; ctx.font = '600 18px "Songti SC", serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(piece.glyph, x - 34, y);
+      ctx.font = '600 12px "PingFang SC", sans-serif';
+      ctx.fillText(piece.name, x + 18, y + 1);
+    });
+    ctx.fillStyle = meta.ink; ctx.font = '600 14px "PingFang SC", sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText('拖动部件到对应位置', MINI.width / 2, 530);
+    miniFlashText(ctx, mini);
+  }
+
+  function drawWeatherGame(ctx, mini) {
+    const meta = DATA.seasons[mini.term.season];
+    drawMiniBackdrop(ctx, mini);
+    mini.buttons = [];
+    const sunny = mini.weatherPattern[mini.weatherIndex] === 1;
+    const item = mini.game.items[mini.weatherIndex] || '书';
+    ctx.save();
+    if (sunny) {
+      const grad = ctx.createRadialGradient(MINI.width/2, 120, 14, MINI.width/2, 120, 150);
+      grad.addColorStop(0, 'rgba(255,220,76,.9)'); grad.addColorStop(1, 'rgba(255,220,76,0)');
+      ctx.fillStyle = grad; ctx.fillRect(0,0,MINI.width,270);
+      ctx.fillStyle = '#eab128'; ctx.beginPath(); ctx.arc(MINI.width/2,120,48,0,TAU); ctx.fill();
+      ctx.strokeStyle = '#eab128'; ctx.lineWidth = 4;
+      for(let i=0;i<10;i++){const a=i/10*TAU;ctx.beginPath();ctx.moveTo(MINI.width/2+Math.cos(a)*66,120+Math.sin(a)*66);ctx.lineTo(MINI.width/2+Math.cos(a)*92,120+Math.sin(a)*92);ctx.stroke();}
+    } else {
+      ctx.fillStyle = '#8ba5b1';
+      ctx.beginPath(); ctx.arc(MINI.width/2-52,118,52,0,TAU); ctx.arc(MINI.width/2+2,94,64,0,TAU); ctx.arc(MINI.width/2+62,122,46,0,TAU); ctx.fill();
+      ctx.strokeStyle='rgba(93,145,181,.55)'; ctx.lineWidth=4;
+      for(let i=0;i<7;i++){const x=MINI.width/2-100+i*34;ctx.beginPath();ctx.moveTo(x,205);ctx.lineTo(x-12,245);ctx.stroke();}
+    }
+    ctx.restore();
+    ctx.fillStyle = meta.ink;
+    ctx.font = '600 18px "PingFang SC", sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText(sunny ? '太阳出来了' : '乌云压过来了', MINI.width/2, 300);
+    ctx.font = '500 34px "Songti SC", serif';
+    ctx.fillText(`${item}`, MINI.width/2, 345);
+    const choices = [['晒一晒','晒'], ['收回屋','收']];
+    choices.forEach((choice,index)=>{
+      const x = index === 0 ? 250 : 510;
+      roundedRect(ctx,x,410,200,84,20);
+      ctx.fillStyle = index===0 ? '#f8e5ae' : '#dcecf2'; ctx.fill();
+      ctx.strokeStyle = meta.color; ctx.lineWidth=2; ctx.stroke();
+      ctx.fillStyle=meta.ink; ctx.font='600 24px "Songti SC", serif'; ctx.textAlign='center'; ctx.textBaseline='middle';
+      ctx.fillText(choice[0],x+100,452);
+      mini.buttons.push({x,y:410,w:200,h:84,index});
+    });
+    miniFlashText(ctx, mini);
+  }
+
+  function drawFold(ctx, mini) {
+    const meta = DATA.seasons[mini.term.season];
+    drawMiniBackdrop(ctx, mini);
+    ctx.save();
+    ctx.translate(MINI.width / 2, 270);
+    ctx.fillStyle = '#f6dfb1';
+    ctx.beginPath(); ctx.ellipse(0, 0, 135, 92, 0, 0, TAU); ctx.fill();
+    ctx.strokeStyle = meta.color; ctx.lineWidth = 3; ctx.stroke();
+    ctx.strokeStyle = 'rgba(123,87,45,.35)'; ctx.lineWidth = 2; ctx.setLineDash([5,7]);
+    ctx.beginPath(); ctx.moveTo(0,-88); ctx.lineTo(0,88); ctx.stroke(); ctx.setLineDash([]);
+    ctx.fillStyle = '#d7a15b';
+    ctx.beginPath(); ctx.arc(0, 0, 28, 0, TAU); ctx.fill();
+    ctx.restore();
+    ctx.fillStyle = meta.ink; ctx.textAlign='center'; ctx.font='600 19px "PingFang SC", sans-serif';
+    ctx.fillText('按住左侧面皮，向右拖动折合', MINI.width/2, 420);
+    ctx.fillStyle='#748178'; ctx.font='600 13px "PingFang SC", sans-serif';
+    ctx.fillText(`已包好 ${mini.round} / ${mini.game.rounds}`, MINI.width/2, 455);
+    if (mini.foldDelta > 0) {
+      ctx.fillStyle = 'rgba(79,159,90,.25)';
+      roundedRect(ctx, MINI.width/2 - 135, 178, Math.min(135, mini.foldDelta), 184, 80); ctx.fill();
+    }
+    miniFlashText(ctx, mini);
+  }
+
+  function drawSalt(ctx, mini) {
+    const meta = DATA.seasons[mini.term.season];
+    drawMiniBackdrop(ctx, mini);
+    ctx.fillStyle = meta.ink; ctx.textAlign='center'; ctx.font='600 15px "PingFang SC", sans-serif';
+    ctx.fillText('按住并停留在肉条上，让盐粒铺满', MINI.width/2, 80);
+    const stripNames=['上','中','下'];
+    mini.coverage.forEach((cover,index)=>{
+      const y=155+index*115;
+      roundedRect(ctx,240,y,480,72,22);
+      ctx.fillStyle='#8d4b35'; ctx.fill();
+      ctx.strokeStyle=meta.color; ctx.lineWidth=2; ctx.stroke();
+      ctx.fillStyle='#f8e0c4'; ctx.font='600 13px "PingFang SC", sans-serif';
+      ctx.fillText(`肉条 ${stripNames[index]}`,480,y+36);
+      for(let i=0;i<30;i++){
+        if(i/30>=cover) continue;
+        const x=252+(i*61)%450, yy=y+10+(i*29)%50;
+        ctx.fillStyle='rgba(255,255,255,.92)'; ctx.beginPath(); ctx.arc(x,yy,1.8,0,TAU); ctx.fill();
+      }
+    });
+    ctx.fillStyle=meta.ink; ctx.font='600 14px "PingFang SC", sans-serif';
+    ctx.fillText(`覆盖 ${Math.round(mini.coverage.reduce((a,b)=>a+b,0) / mini.coverage.length * 100)}%`, MINI.width/2, 515);
+    miniFlashText(ctx, mini);
+  }
+
+  function drawWipe(ctx, mini) {
+    const meta = DATA.seasons[mini.term.season];
+    drawMiniBackdrop(ctx, mini);
+    ctx.fillStyle = meta.ink; ctx.textAlign='center'; ctx.font='600 15px "PingFang SC", sans-serif';
+    ctx.fillText('按住扫帚来回拖动，清除雪堆', MINI.width/2, 70);
+    mini.patches.forEach(patch=>{
+      if(patch.cleared) return;
+      ctx.fillStyle='rgba(255,255,255,.95)';
+      ctx.beginPath(); ctx.arc(patch.x,patch.y,patch.r,0,TAU); ctx.fill();
+      ctx.strokeStyle='rgba(143,211,232,.9)'; ctx.lineWidth=3; ctx.stroke();
+      ctx.fillStyle='#86a9b7'; ctx.font='600 17px "Songti SC", serif'; ctx.fillText('雪',patch.x,patch.y+6);
+    });
+    ctx.fillStyle='#6c8a97'; ctx.font='600 14px "PingFang SC", sans-serif';
+    ctx.fillText(`已清扫 ${mini.patches.filter(p=>p.cleared).length} / ${mini.patches.length}`,MINI.width/2,520);
+    miniFlashText(ctx,mini);
+  }
+
+  function drawRoll(ctx, mini) {
+    const meta = DATA.seasons[mini.term.season];
+    drawMiniBackdrop(ctx, mini);
+    ctx.fillStyle = meta.ink; ctx.textAlign='center'; ctx.font='600 15px "PingFang SC", sans-serif';
+    ctx.fillText('按住当前面团，画圈把它搓圆', MINI.width/2, 78);
+    mini.centers.forEach((center,index)=>{
+      const active=index===mini.round;
+      ctx.save(); ctx.translate(center.x,center.y);
+      ctx.fillStyle=active?meta.pale:'rgba(255,255,255,.65)';
+      ctx.beginPath(); ctx.arc(0,0,index<mini.round?59:55,0,TAU); ctx.fill();
+      ctx.strokeStyle=index<mini.round?meta.color:'rgba(45,67,51,.18)'; ctx.lineWidth=3; ctx.stroke();
+      ctx.fillStyle=index<mini.round?meta.color:meta.ink; ctx.font='500 32px "Songti SC", serif'; ctx.textBaseline='middle';
+      ctx.fillText(index<mini.round?'圆':mini.term.glyph,0,3);
+      ctx.restore();
+    });
+    ctx.fillStyle='#748178'; ctx.font='600 13px "PingFang SC", sans-serif';
+    ctx.fillText(`已完成 ${mini.round} / ${mini.game.rounds}`,MINI.width/2,455);
+    miniFlashText(ctx,mini);
+  }
+
+  function drawPour(ctx, mini) {
+    const meta = DATA.seasons[mini.term.season];
+    drawMiniBackdrop(ctx, mini);
+    ctx.fillStyle = meta.ink; ctx.textAlign='center'; ctx.font='600 15px "PingFang SC", sans-serif';
+    ctx.fillText('按顺序把食材拖进粥锅', MINI.width/2, 72);
+    ctx.fillStyle='#d9c2a0'; ctx.beginPath(); ctx.ellipse(480,335,104,66,0,0,TAU); ctx.fill();
+    ctx.strokeStyle=meta.color; ctx.lineWidth=3; ctx.stroke();
+    ctx.fillStyle=meta.ink; ctx.font='500 28px "Songti SC", serif'; ctx.textBaseline='middle'; ctx.fillText('粥',480,340);
+    mini.game.ingredients.forEach((item,index)=>{
+      const used=index<mini.index;
+      const x=150+index*220, y=455;
+      roundedRect(ctx,x,y-38,120,76,16);
+      ctx.fillStyle=used?meta.pale:'rgba(255,255,255,.9)'; ctx.fill();
+      ctx.strokeStyle=used?meta.color:'rgba(45,67,51,.18)'; ctx.lineWidth=2; ctx.stroke();
+      ctx.fillStyle=meta.ink; ctx.font='600 20px "Songti SC", serif'; ctx.textBaseline='middle';
+      ctx.fillText(item.glyph,x+60,y-5);
+      ctx.font='600 10px "PingFang SC", sans-serif'; ctx.fillStyle='#748178'; ctx.fillText(item.name,x+60,y+22);
+    });
+    if(mini.dragging!==null){const item=mini.game.ingredients[mini.dragging]; ctx.fillStyle=meta.color;ctx.beginPath();ctx.arc(mini.pointerX,mini.pointerY,28,0,TAU);ctx.fill();ctx.fillStyle='#fff';ctx.font='600 17px "Songti SC", serif';ctx.fillText(item.glyph,mini.pointerX,mini.pointerY+2);}
+    miniFlashText(ctx,mini);
+  }
+
+  function drawSweep(ctx, mini) {
+    const meta = DATA.seasons[mini.term.season];
+    drawMiniBackdrop(ctx, mini);
+    ctx.fillStyle = meta.ink; ctx.textAlign='center'; ctx.font='600 15px "PingFang SC", sans-serif';
+    ctx.fillText('快速来回划过尘团，每个角落扫两次', MINI.width/2, 70);
+    mini.spots.forEach(spot=>{
+      if(spot.cleared) return;
+      const alpha=.28 + (spot.hits||0)*.18;
+      ctx.fillStyle = 'rgba(112,104,87,' + alpha + ')';
+      ctx.beginPath(); ctx.arc(spot.x,spot.y,spot.r,0,TAU); ctx.fill();
+      ctx.fillStyle='rgba(255,255,255,.7)'; ctx.font='600 12px "PingFang SC", sans-serif'; ctx.fillText(spot.hits?'扫':'尘',spot.x,spot.y+4);
+    });
+    ctx.fillStyle='#748178'; ctx.font='600 14px "PingFang SC", sans-serif';
+    ctx.fillText(`已清理 ${mini.spots.filter(s=>s.cleared).length} / ${mini.spots.length}`,MINI.width/2,520);
+    miniFlashText(ctx,mini);
+  }
+
 })();

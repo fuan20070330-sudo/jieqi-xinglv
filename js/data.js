@@ -81,8 +81,9 @@ window.JOURNEY_DATA = {
       position: { x: 1100, y: 880 }, color: '#83c9a0',
       culture: '清明前后踏青、放风筝、插柳，是许多地方共有的春日习俗。',
       game: {
-        type: 'path', title: '放纸鸢', hint: '左右移动纸鸢穿过柳梢，收集三缕彩带。',
-        playerGlyph: '鸢', targetName: '彩带', targetGlyph: '带', obstacleName: '柳梢', obstacleGlyph: '柳', targetCount: 3
+        type: 'assemble', title: '拼一只纸鸢', hint: '拖动风筝面、竹骨、飘带和线轴，拼到正确轮廓。', pieces: [
+          { name: '风筝面', glyph: '筝' }, { name: '竹骨', glyph: '骨' }, { name: '飘带', glyph: '带' }, { name: '线轴', glyph: '线' }
+        ]
       }
     },
     {
@@ -90,9 +91,13 @@ window.JOURNEY_DATA = {
       position: { x: 620, y: 970 }, color: '#65a777',
       culture: '谷雨前后采制的春茶被称为谷雨茶，部分地区还有赏牡丹等习俗。',
       game: {
-        type: 'collect', title: '采一篮谷雨茶', hint: '移动茶篮，接住嫩叶与茶芽，避开杂草。',
-        targets: [{ name: '嫩叶', glyph: '叶' }, { name: '茶芽', glyph: '芽' }, { name: '一芽一叶', glyph: '茶' }],
-        avoid: [{ name: '杂草', glyph: '草' }, { name: '枯叶', glyph: '枯' }], targetCount: 6
+        type: 'sort', title: '谷雨茶分拣', hint: '把单芽、一芽一叶和杂质放入正确茶篓。',
+        categories: [{ name: '单芽', glyph: '芽' }, { name: '一芽一叶', glyph: '叶' }, { name: '杂质', glyph: '杂' }],
+        items: [
+          { name: '茶芽', glyph: '芽', cat: 0 }, { name: '嫩叶', glyph: '叶', cat: 1 },
+          { name: '杂草', glyph: '草', cat: 2 }, { name: '一芽一叶', glyph: '茶', cat: 1 },
+          { name: '老枝', glyph: '枝', cat: 2 }, { name: '单芽', glyph: '尖', cat: 0 }
+        ]
       }
     },
     {
@@ -100,7 +105,7 @@ window.JOURNEY_DATA = {
       position: { x: 300, y: 860 }, color: '#ef8b37',
       culture: '部分地区在立夏斗蛋、称人，用热闹的小游戏迎接夏日。',
       game: {
-        type: 'timing', title: '来一场斗蛋', hint: '在碰撞线进入金色区域时按下，连续赢下三回合。',
+        type: 'duel', title: '来一场斗蛋', hint: '左右移动自己的蛋，瞄准对手后点击碰撞，赢下三回合。',
         objectGlyph: '蛋', rounds: 3
       }
     },
@@ -109,8 +114,8 @@ window.JOURNEY_DATA = {
       position: { x: 520, y: 500 }, color: '#d7ad3d',
       culture: '小满前后农事繁忙，部分地区有祭车神、祈求灌溉顺利的习俗。',
       game: {
-        type: 'rhythm', title: '踩动水车', hint: '节拍环收拢时击水，让水车把水送进田里。',
-        instrument: '水', beats: 5, tempo: 1.05
+        type: 'pump', title: '踩动水车', hint: '左右交替踩动踏板八次，让水车持续把水送进田里。',
+        strokes: 8
       }
     },
     {
@@ -118,13 +123,8 @@ window.JOURNEY_DATA = {
       position: { x: 900, y: 290 }, color: '#cf882e',
       culture: '芒种兼有收获与播种的农事节奏，各地还有送花神、煮梅等习俗。',
       game: {
-        type: 'sort', title: '收与种', hint: '判断眼前作物该“收”还是该“种”，点击对应篮子。',
-        categories: [{ name: '收', glyph: '收' }, { name: '种', glyph: '种' }],
-        items: [
-          { name: '麦穗', glyph: '麦', cat: 0 }, { name: '稻秧', glyph: '秧', cat: 1 },
-          { name: '油菜籽', glyph: '籽', cat: 0 }, { name: '玉米种', glyph: '玉', cat: 1 },
-          { name: '蚕豆', glyph: '豆', cat: 0 }, { name: '豆种', glyph: '种', cat: 1 }
-        ]
+        type: 'plant', title: '收麦插秧', hint: '从秧盘拖出秧苗，依次放进九块水田格。',
+        slots: 9
       }
     },
     {
@@ -132,9 +132,8 @@ window.JOURNEY_DATA = {
       position: { x: 1280, y: 320 }, color: '#e66f29',
       culture: '“冬至饺子夏至面”是流传较广的节令饮食说法，部分地区夏至吃凉面。',
       game: {
-        type: 'sequence', title: '做一碗夏至面', hint: '记住做面的步骤，再按顺序点击。',
-        symbols: [{ name: '和面', glyph: '和' }, { name: '擀面', glyph: '擀' }, { name: '切面', glyph: '切' }, { name: '煮面', glyph: '煮' }],
-        sequence: [0, 1, 2, 3]
+        type: 'noodle', title: '做一碗夏至面', hint: '按住面头，沿碗中的虚线一路拖到尾，拉出完整面条。',
+        points: 17
       }
     },
     {
@@ -142,13 +141,8 @@ window.JOURNEY_DATA = {
       position: { x: 1510, y: 660 }, color: '#f4b33e',
       culture: '小暑前后有晒书、晒衣的习俗，利用盛夏阳光防潮防霉。',
       game: {
-        type: 'sort', title: '晾晒分类', hint: '把物件送到对应的晒架：书、衣或谷物。',
-        categories: [{ name: '书', glyph: '书' }, { name: '衣', glyph: '衣' }, { name: '谷', glyph: '谷' }],
-        items: [
-          { name: '诗集', glyph: '诗', cat: 0 }, { name: '棉衣', glyph: '衣', cat: 1 },
-          { name: '稻谷', glyph: '稻', cat: 2 }, { name: '画册', glyph: '画', cat: 0 },
-          { name: '长衫', glyph: '衫', cat: 1 }, { name: '豆子', glyph: '豆', cat: 2 }
-        ]
+        type: 'weather', title: '晒书晾衣', hint: '看天空变化，在太阳和乌云之间快速选择晒或收。',
+        rounds: 6, items: ['诗集', '长衫', '稻谷', '画册', '棉被', '豆子']
       }
     },
     {
@@ -165,8 +159,8 @@ window.JOURNEY_DATA = {
       position: { x: 300, y: 300 }, color: '#d99131',
       culture: '立秋前后，山区村落常把辣椒、玉米、南瓜等作物晾晒成缤纷的“晒秋”景观。',
       game: {
-        type: 'sort', title: '把秋色晒开', hint: '按颜色把秋收作物放入红色或黄色晒盘。',
-        categories: [{ name: '红', glyph: '红' }, { name: '黄', glyph: '黄' }],
+        type: 'hang', title: '把秋色晒开', hint: '拖动红、黄两色作物，分别挂到同色晒架上。',
+        categories: [{ name: '红架', glyph: '红', cat: 0 }, { name: '黄架', glyph: '黄', cat: 1 }],
         items: [
           { name: '辣椒', glyph: '椒', cat: 0 }, { name: '玉米', glyph: '玉', cat: 1 },
           { name: '南瓜', glyph: '瓜', cat: 1 }, { name: '山楂', glyph: '楂', cat: 0 },
@@ -179,8 +173,8 @@ window.JOURNEY_DATA = {
       position: { x: 650, y: 280 }, color: '#cf7b37',
       culture: '处暑前后部分地区有放河灯、开渔等习俗，表达思念与祈愿。',
       game: {
-        type: 'path', title: '放一盏河灯', hint: '左右护送河灯，收集三枚心愿，避开礁石。',
-        playerGlyph: '灯', targetName: '心愿', targetGlyph: '愿', obstacleName: '礁石', obstacleGlyph: '礁', targetCount: 3
+        type: 'lantern', title: '放一盏河灯', hint: '点击左岸或右岸改变水流，推送河灯绕过礁石。',
+        rocks: 4
       }
     },
     {
@@ -188,9 +182,8 @@ window.JOURNEY_DATA = {
       position: { x: 1000, y: 440 }, color: '#899e78',
       culture: '部分地区有收清露、饮白露茶的习俗，表达对秋日清晨的珍惜。',
       game: {
-        type: 'collect', title: '收一盅清露', hint: '移动瓷盅，接住晨露，避开落叶。',
-        targets: [{ name: '荷叶露', glyph: '露' }, { name: '草尖露', glyph: '珠' }, { name: '花瓣露', glyph: '滴' }],
-        avoid: [{ name: '落叶', glyph: '叶' }, { name: '飞虫', glyph: '虫' }], targetCount: 6
+        type: 'dew', title: '收一盅清露', hint: '在露珠消失前逐颗点入瓷盅，收满八颗清露。',
+        drops: 8
       }
     },
     {
@@ -198,9 +191,8 @@ window.JOURNEY_DATA = {
       position: { x: 1390, y: 510 }, color: '#e0aa3f',
       culture: '秋分曾是传统“祭月节”，后来中秋节俗与秋季祭月传统相互交融。',
       game: {
-        type: 'sequence', title: '摆好月下供果', hint: '记住供品亮起的顺序，再依次点击。',
-        symbols: [{ name: '明月', glyph: '月' }, { name: '月饼', glyph: '饼' }, { name: '秋果', glyph: '果' }, { name: '花灯', glyph: '灯' }],
-        sequence: [0, 2, 1, 3]
+        type: 'moon', title: '校准月下礼盘', hint: '点击三层礼盘，让每一圈的月纹都对准上方刻度。',
+        rings: 3, steps: 8
       }
     },
     {
@@ -208,8 +200,8 @@ window.JOURNEY_DATA = {
       position: { x: 1120, y: 880 }, color: '#b1803a',
       culture: '寒露与重阳时节相近，部分地区有登高、赏菊、饮菊花酒的习俗。',
       game: {
-        type: 'rhythm', title: '踏阶登高', hint: '节拍环收拢时点击，顺着石阶一步步登高。',
-        instrument: '阶', beats: 5, tempo: 1.2
+        type: 'climb', title: '踏阶登高', hint: '从低到高依次点击十块石阶，一步一级登上山亭。',
+        stones: 10
       }
     },
     {
@@ -217,8 +209,8 @@ window.JOURNEY_DATA = {
       position: { x: 650, y: 980 }, color: '#c86a2d',
       culture: '霜降前后，部分地区有吃柿子、赏菊、登高的习俗。',
       game: {
-        type: 'timing', title: '摘一颗红柿', hint: '在篮口对准柿子时点击或按空格。',
-        objectGlyph: '柿', rounds: 3
+        type: 'shake', title: '摇落枝头红柿', hint: '按住树干左右快速摇动，让五颗柿子落进竹篮。',
+        fruits: 5
       }
     },
     {
@@ -226,9 +218,7 @@ window.JOURNEY_DATA = {
       position: { x: 320, y: 430 }, color: '#5f91ae',
       culture: '立冬有补冬、吃饺子等习俗，北方不少地区把饺子作为节令食物。',
       game: {
-        type: 'sequence', title: '包一盘饺子', hint: '记住包饺子的步骤，再按顺序点击。',
-        symbols: [{ name: '和面', glyph: '和' }, { name: '擀皮', glyph: '擀' }, { name: '包馅', glyph: '包' }, { name: '下锅', glyph: '煮' }],
-        sequence: [0, 1, 2, 3]
+        type: 'fold', title: '包一盘饺子', hint: '按住面皮两侧向中心折合，捏出三只饺子。', rounds: 3
       }
     },
     {
@@ -236,13 +226,7 @@ window.JOURNEY_DATA = {
       position: { x: 600, y: 250 }, color: '#71a7c0',
       culture: '小雪前后气温降低，部分地区开始腌腊肉、晒鱼干，为寒冬储备食物。',
       game: {
-        type: 'sort', title: '腌与晾', hint: '把材料分到“腌制”或“晾晒”两类。',
-        categories: [{ name: '腌制', glyph: '腌' }, { name: '晾晒', glyph: '晾' }],
-        items: [
-          { name: '粗盐', glyph: '盐', cat: 0 }, { name: '香料', glyph: '香', cat: 0 },
-          { name: '肉条', glyph: '肉', cat: 0 }, { name: '竹架', glyph: '架', cat: 1 },
-          { name: '麻绳', glyph: '绳', cat: 1 }, { name: '风干', glyph: '风', cat: 1 }
-        ]
+        type: 'salt', title: '给腊肉抹盐', hint: '按住盐罐在肉条上来回拖动，把盐均匀覆盖。', strips: 3
       }
     },
     {
@@ -250,8 +234,7 @@ window.JOURNEY_DATA = {
       position: { x: 980, y: 300 }, color: '#4f87a7',
       culture: '大雪时节积雪加深，扫雪开路、赏雪、腌肉等习俗与冬日生活相连。',
       game: {
-        type: 'path', title: '扫出一条归路', hint: '左右移动扫雪人，收集三捆柴火，避开冰窟。',
-        playerGlyph: '扫', targetName: '柴火', targetGlyph: '柴', obstacleName: '冰窟', obstacleGlyph: '冰', targetCount: 3
+        type: 'wipe', title: '扫出一条归路', hint: '按住扫帚拖过雪堆，清出通往家门的小路。', patches: 6
       }
     },
     {
@@ -259,9 +242,7 @@ window.JOURNEY_DATA = {
       position: { x: 1450, y: 410 }, color: '#6aa3bd',
       culture: '冬至有吃饺子、汤圆等习俗，不同地区用各自的食物寄托团圆与迎冬。',
       game: {
-        type: 'collect', title: '搓一碗汤圆', hint: '移动碗，接住糯米团和馅料，避开石子。',
-        targets: [{ name: '糯米团', glyph: '团' }, { name: '芝麻馅', glyph: '芝' }, { name: '花生馅', glyph: '花' }],
-        avoid: [{ name: '石子', glyph: '石' }, { name: '冰碴', glyph: '冰' }], targetCount: 6
+        type: 'roll', title: '搓一碗汤圆', hint: '按住面团并画圈搓圆，做够三颗汤圆。', rounds: 3
       }
     },
     {
@@ -269,9 +250,8 @@ window.JOURNEY_DATA = {
       position: { x: 1220, y: 850 }, color: '#5b8ca6',
       culture: '小寒前后有吃腊八粥、探梅、备年货等习俗，用热粥温暖寒冬。',
       game: {
-        type: 'sequence', title: '配一碗腊八粥', hint: '记住下料顺序，再依次点击。',
-        symbols: [{ name: '米', glyph: '米' }, { name: '豆', glyph: '豆' }, { name: '枣', glyph: '枣' }, { name: '果', glyph: '果' }],
-        sequence: [0, 1, 2, 3]
+        type: 'pour', title: '配一碗腊八粥', hint: '按米、豆、枣、果的顺序，把食材拖进粥锅。',
+        ingredients: [{ name: '米', glyph: '米' }, { name: '豆', glyph: '豆' }, { name: '枣', glyph: '枣' }, { name: '果', glyph: '果' }]
       }
     },
     {
@@ -279,9 +259,7 @@ window.JOURNEY_DATA = {
       position: { x: 700, y: 960 }, color: '#507e99',
       culture: '大寒临近春节，部分地区有除尘、备年货等习俗，以清爽环境迎接新年。',
       game: {
-        type: 'collect', title: '扫尘迎新年', hint: '移动簸箕，接住尘团和旧纸，避开瓷瓶。',
-        targets: [{ name: '尘团', glyph: '尘' }, { name: '旧纸', glyph: '纸' }, { name: '碎叶', glyph: '叶' }],
-        avoid: [{ name: '瓷瓶', glyph: '瓶' }, { name: '灯笼', glyph: '灯' }], targetCount: 6
+        type: 'sweep', title: '扫尘迎新年', hint: '快速划过屋内的尘团，把角落清扫干净。', spots: 8
       }
     }
   ]

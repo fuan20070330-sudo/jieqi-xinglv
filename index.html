@@ -32,10 +32,10 @@
 
     <div class="weather-chip" id="weatherChip" hidden><span class="weather-chip__dot"></span><span id="weatherLabel"></span></div>
     <div class="world-help" id="worldHelp" hidden><kbd>WASD</kbd><span>移动</span><kbd>E</kbd><span>互动</span></div>
-    <div class="interaction-prompt" id="interactionPrompt" hidden>
+    <button type="button" class="interaction-prompt" id="interactionPrompt" hidden aria-label="与附近目标互动">
       <span class="interaction-prompt__key">E</span>
-      <span><small>靠近节气碑</small><strong id="nearStationName">进入小游戏</strong></span>
-    </div>
+      <span><small id="promptLabel">靠近节气碑</small><strong id="nearStationName">进入小游戏</strong></span>
+    </button>
 
     <div class="touch-controls" id="touchControls" hidden>
       <div class="joystick" id="joystick" aria-label="虚拟摇杆">
@@ -93,6 +93,7 @@
         <footer class="mini-foot">
           <span id="miniHint"></span>
           <div class="mini-progress" id="miniProgress"></div>
+          <button class="mini-start" id="miniStartBtn">确定，开始</button>
         </footer>
       </div>
     </section>
