@@ -2289,7 +2289,7 @@ window.JOURNEY_DATA = {
         playSound('error');
       }
     });
-    if (mini.progress >= 1) mini.finishAt = mini.elapsed + .55;
+    if (mini.progress >= 1 && !mini.finishAt) mini.finishAt = mini.elapsed + .55;
     if (mini.finishAt && mini.elapsed >= mini.finishAt) finishMini();
   }
 

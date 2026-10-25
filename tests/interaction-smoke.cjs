@@ -126,7 +126,16 @@ const H = 560;
   await page.waitForTimeout(120);
   await click(box, 790, 360);
   results.lantern = await page.evaluate(() => ({ progress: JourneyDebug.state.mini.progress, velocity: JourneyDebug.state.mini.velocity, flash: JourneyDebug.state.mini.flash }));
-  await cancelAndContinue();
+  await page.evaluate(() => { JourneyDebug.state.mini.progress = .999; JourneyDebug.state.mini.finishAt = null; });
+  await page.waitForSelector('#miniOverlay', { state: 'hidden', timeout: 6000 });
+  await page.waitForTimeout(420);
+  results.lanternExit = await page.evaluate(() => ({
+    mode: JourneyDebug.state.mode,
+    overlayHidden: document.querySelector('#miniOverlay').hidden,
+    complete: Boolean(JourneyDebug.state.save.stations.chushu?.complete),
+    stars: JourneyDebug.state.save.stations.chushu?.stars || 0
+  }));
+  if (await page.locator('#chapterOverlay').isVisible()) await page.click('#staySeasonBtn');
 
   await open('bailu', 'autumn');
   box = await miniBox();
@@ -171,6 +180,7 @@ const H = 560;
   if (results.noodle.traced < results.noodle.total) failures.push('拉面未描完整条路径');
   if (results.hang.hung < 6) failures.push('晒秋未挂满六件');
   if (results.lantern.progress <= 0 || !results.lantern.flash.includes('推流')) failures.push('河灯未被水流推动');
+  if (results.lanternExit.mode !== 'world' || !results.lanternExit.overlayHidden || !results.lanternExit.complete) failures.push('处暑河灯完成后未退出小游戏');
   if (results.dew.caught < results.dew.total) failures.push('清露未收满');
   if (!results.moon.offsets.every(offset => offset === 0)) failures.push('月盘未校准');
   if (results.climb.cleared < results.climb.total) failures.push('登高未走完石阶');
