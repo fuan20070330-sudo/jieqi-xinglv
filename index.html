@@ -1,0 +1,235 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#08131f">
+  <meta name="description" content="节气行旅：二十四节气的物候解谜。修复四季时钟，收集七十二候。">
+  <title>节气行旅 · 二十四节气的物候解谜</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%2308131f'/%3E%3Ccircle cx='32' cy='32' r='21' fill='none' stroke='%23d8b56b' stroke-width='2'/%3E%3Ccircle cx='32' cy='32' r='8' fill='%23bb4a38'/%3E%3Cpath d='M32 5v9M32 50v9M5 32h9M50 32h9' stroke='%23d8b56b' stroke-width='2'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="css/styles.css">
+  <script src="js/data.js" defer></script>
+  <script src="js/astro.js" defer></script>
+  <script src="js/game.js" defer></script>
+</head>
+<body>
+  <div class="ambient" aria-hidden="true">
+    <div class="ambient__glow ambient__glow--one"></div>
+    <div class="ambient__glow ambient__glow--two"></div>
+    <div class="ambient__grid"></div>
+    <div class="ambient__stars" id="ambientStars"></div>
+  </div>
+
+  <div class="app-shell" id="appShell">
+    <header class="topbar">
+      <button class="brand" id="brandHome" aria-label="返回游戏首页">
+        <span class="brand__mark" aria-hidden="true">
+          <svg viewBox="0 0 44 44"><circle cx="22" cy="22" r="17"/><circle cx="22" cy="22" r="7"/><path d="M22 1v8M22 35v8M1 22h8M35 22h8"/></svg>
+        </span>
+        <span class="brand__text"><strong>节气行旅</strong><small>时轮修复局</small></span>
+      </button>
+      <nav class="topnav" aria-label="主要导航">
+        <button class="nav-btn" data-nav="map">星图</button>
+        <button class="nav-btn" data-nav="codex">物候档案</button>
+        <button class="nav-btn" data-nav="review">辨析复盘</button>
+      </nav>
+      <div class="topbar__tools">
+        <span class="live-chip" id="liveChip" title="按当前时间近似计算">
+          <span class="live-chip__dot"></span><span id="liveTerm">观时中</span>
+        </span>
+        <button class="icon-btn" id="soundBtn" aria-label="切换声音" title="声音">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9v6h4l5 4V5L8 9H4z"/><path class="sound-wave" d="M16 8c1.4 1.1 2 2.4 2 4s-.6 2.9-2 4M19 5c2.3 1.9 3.4 4.2 3.4 7S21.3 17.1 19 19"/></svg>
+        </button>
+        <button class="icon-btn" id="helpBtn" aria-label="查看玩法说明" title="玩法说明">?</button>
+      </div>
+    </header>
+
+    <main class="main-shell" id="mainShell">
+      <section class="screen screen--home is-active" id="screen-home" aria-labelledby="homeTitle">
+        <div class="home-grid">
+          <div class="home-copy">
+            <p class="eyebrow"><span></span>数字游戏 · 二十四节气 · 物候解谜</p>
+            <h1 id="homeTitle">节气<br><em>行旅</em></h1>
+            <p class="home-title-sub">二十四节气的物候解谜</p>
+            <p class="home-lead">四季时钟失去秩序，七十二候散落成影。校准太阳黄经，辨明古今误区，让时间重新行走。</p>
+            <div class="home-actions">
+              <button class="btn btn--primary btn--large" id="startBtn">进入时轮</button>
+              <button class="btn btn--ghost" id="homeHelpBtn">如何观测</button>
+            </div>
+            <div class="home-progress" id="homeProgress" aria-live="polite"></div>
+            <div class="home-features" aria-label="游戏特色">
+              <span>24 节气关卡</span><span>72 候图鉴</span><span>4 章时轮试炼</span>
+            </div>
+          </div>
+
+          <div class="home-instrument" aria-label="装饰性四季黄经仪">
+            <svg class="chronometer" id="homeChronometer" viewBox="0 0 620 620" role="img" aria-label="四季黄经仪">
+              <defs>
+                <radialGradient id="dialGlow" cx="45%" cy="38%" r="65%">
+                  <stop offset="0" stop-color="#d8b56b" stop-opacity=".16"/>
+                  <stop offset=".58" stop-color="#0e2231" stop-opacity=".08"/>
+                  <stop offset="1" stop-color="#06101a" stop-opacity="0"/>
+                </radialGradient>
+                <linearGradient id="sunGradient" x1="0" y1="0" x2="1" y2="1">
+                  <stop offset="0" stop-color="#f2dba3"/>
+                  <stop offset=".55" stop-color="#d8b56b"/>
+                  <stop offset="1" stop-color="#a94737"/>
+                </linearGradient>
+                <filter id="softGlow"><feGaussianBlur stdDeviation="5" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+              </defs>
+              <circle cx="310" cy="310" r="240" fill="url(#dialGlow)"/>
+              <circle class="chrono-ring chrono-ring--outer" cx="310" cy="310" r="266"/>
+              <circle class="chrono-ring chrono-ring--mid" cx="310" cy="310" r="218"/>
+              <circle class="chrono-ring chrono-ring--inner" cx="310" cy="310" r="144"/>
+              <g id="homeDialTicks"></g>
+              <g class="chrono-season-arcs" id="homeSeasonArcs"></g>
+              <g class="chrono-orbit" id="homeOrbitNodes"></g>
+              <g class="chrono-sun" filter="url(#softGlow)">
+                <circle cx="310" cy="310" r="47" fill="url(#sunGradient)"/>
+                <path d="M310 238v22M310 360v22M238 310h22M360 310h22M259 259l16 16M345 345l16 16M361 259l-16 16M275 345l-16 16" stroke="#e7cc8e" stroke-width="2"/>
+                <text x="310" y="316" text-anchor="middle" class="chrono-sun__char">时</text>
+              </g>
+              <path class="chrono-needle" d="M310 326L310 112" />
+              <circle cx="310" cy="310" r="7" class="chrono-pivot"/>
+              <text x="310" y="580" text-anchor="middle" class="chrono-caption">四季有信 · 万物有时</text>
+            </svg>
+            <div class="instrument-label instrument-label--top">太阳视黄经</div>
+            <div class="instrument-label instrument-label--bottom" id="homeLiveReading">计算中</div>
+          </div>
+        </div>
+
+        <div class="home-footer-grid">
+          <article class="brief-card">
+            <span class="brief-card__index">01</span>
+            <h2>观天 · 识候 · 辨误 · 修复</h2>
+            <p>每关不是问答清单，而是一台需要亲手校准的四段式时轮仪器。</p>
+          </article>
+          <article class="brief-card">
+            <span class="brief-card__index">02</span>
+            <h2>七十二候，皆有归处</h2>
+            <p>正确辨认物候后，候牌进入档案。集齐 72 候，完成属于你的时间行旅。</p>
+          </article>
+          <article class="brief-card">
+            <span class="brief-card__index">03</span>
+            <h2>古代观察，现代辨析</h2>
+            <p>不把传统记录当作现代定论，在证据天平上区分天文、气象、生物与文化层。</p>
+          </article>
+        </div>
+      </section>
+
+      <section class="screen screen--map" id="screen-map" aria-labelledby="mapTitle">
+        <div class="map-head">
+          <div>
+            <p class="eyebrow"><span></span>四季时钟 · 章节星图</p>
+            <h2 id="mapTitle">选择待修复的节气节点</h2>
+          </div>
+          <div class="map-stats" id="mapStats"></div>
+        </div>
+        <div class="season-tabs" id="seasonTabs" role="tablist" aria-label="选择章节"></div>
+        <div class="chapter-panel" id="chapterPanel"></div>
+        <div class="trial-panel" id="trialPanel"></div>
+      </section>
+
+      <section class="screen screen--game" id="screen-game" aria-labelledby="gameTitle">
+        <div class="game-head">
+          <button class="back-btn" id="gameBackBtn" aria-label="返回星图">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg><span>星图</span>
+          </button>
+          <div class="game-title-wrap">
+            <p class="game-kicker" id="gameKicker">春章 · 启蛰</p>
+            <h2 id="gameTitle">校准黄经仪</h2>
+          </div>
+          <div class="game-scoreboard" aria-live="polite">
+            <div class="score-item"><span>时轮分</span><strong id="scoreValue">0</strong></div>
+            <div class="score-item"><span>连击</span><strong id="comboValue">×0</strong></div>
+            <div class="score-item score-item--precision"><span>精度</span><strong id="precisionValue">100%</strong></div>
+          </div>
+        </div>
+        <div class="game-layout">
+          <aside class="game-rail" aria-label="关卡进度">
+            <div class="rail-term" id="railTerm"></div>
+            <ol class="phase-list" id="phaseList"></ol>
+            <div class="rail-note" id="railNote">每个操作都会写入本地存档。</div>
+          </aside>
+          <div class="game-stage" id="gamePanel" tabindex="-1"></div>
+        </div>
+      </section>
+
+      <section class="screen screen--codex" id="screen-codex" aria-labelledby="codexTitle">
+        <div class="subpage-head">
+          <button class="back-btn" id="codexBackBtn" aria-label="返回星图">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg><span>星图</span>
+          </button>
+          <div><p class="eyebrow"><span></span>物候档案 · 七十二候</p><h2 id="codexTitle">散落的候牌</h2></div>
+          <div class="codex-count" id="codexCount"></div>
+        </div>
+        <div class="codex-toolbar" id="codexToolbar"></div>
+        <div class="codex-intro" id="codexIntro"></div>
+        <div class="codex-grid" id="codexGrid"></div>
+      </section>
+
+      <section class="screen screen--review" id="screen-review" aria-labelledby="reviewTitle">
+        <div class="subpage-head">
+          <button class="back-btn" id="reviewBackBtn" aria-label="返回星图">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg><span>星图</span>
+          </button>
+          <div><p class="eyebrow"><span></span>证据回廊 · 错题复盘</p><h2 id="reviewTitle">被纠正的判断</h2></div>
+          <button class="btn btn--quiet" id="clearReviewBtn">清空记录</button>
+        </div>
+        <div class="review-summary" id="reviewSummary"></div>
+        <div class="review-list" id="reviewList"></div>
+      </section>
+
+      <section class="screen screen--card" id="screen-card" aria-labelledby="travelCardTitle">
+        <div class="subpage-head">
+          <button class="back-btn" id="cardBackBtn" aria-label="返回首页">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg><span>首页</span>
+          </button>
+          <div><p class="eyebrow"><span></span>通关成果 · 时间行旅</p><h2 id="travelCardTitle">你的行旅卡</h2></div>
+        </div>
+        <div class="travel-card-layout">
+          <div class="travel-canvas-frame"><canvas id="travelCanvas" width="1080" height="1440" aria-label="时间行旅成果卡预览"></canvas></div>
+          <aside class="travel-card-aside">
+            <h3>四季时钟已复原</h3>
+            <p>成果卡记录完成度、总星数、物候收集与四章印记，不包含任何身份信息。</p>
+            <div id="travelStats"></div>
+            <button class="btn btn--primary btn--large" id="downloadCardBtn">保存 PNG 成果卡</button>
+            <button class="btn btn--ghost" id="shareCardBtn">复制作品名</button>
+            <p class="fine-print">PNG 由浏览器 Canvas 在本机生成，不上传任何数据。</p>
+          </aside>
+        </div>
+      </section>
+    </main>
+
+    <footer class="site-foot">
+      <span>纯前端数字游戏 · 核心玩法可离线运行</span>
+      <span>天文计算为近似演示，正式历算以紫金山天文台等权威历书为准</span>
+    </footer>
+  </div>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <div class="modal" id="modal" aria-hidden="true">
+    <div class="modal__backdrop" data-close-modal></div>
+    <div class="modal__panel" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+      <button class="modal__close" data-close-modal aria-label="关闭">×</button>
+      <div id="modalContent"></div>
+    </div>
+  </div>
+
+  <div class="result-overlay" id="resultOverlay" aria-hidden="true">
+    <div class="result-panel" role="dialog" aria-modal="true" aria-labelledby="resultTitle">
+      <div class="result-seal" id="resultSeal">成</div>
+      <p class="eyebrow"><span></span>时轮修复完成</p>
+      <h2 id="resultTitle">节气节点已归位</h2>
+      <div class="result-stars" id="resultStars" aria-label="星级"></div>
+      <div class="result-score" id="resultScore"></div>
+      <p class="result-copy" id="resultCopy"></p>
+      <div class="result-collect" id="resultCollect"></div>
+      <div class="result-actions" id="resultActions"></div>
+    </div>
+  </div>
+
+  <noscript><div class="noscript">本游戏需要启用 JavaScript 才能运行。</div></noscript>
+</body>
+</html>

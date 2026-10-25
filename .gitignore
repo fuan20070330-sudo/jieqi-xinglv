@@ -1,0 +1,6 @@
+.codex-build/
+.codex-finalizer/
+tests/artifacts/
+*.log
+.DS_Store
+Thumbs.db
