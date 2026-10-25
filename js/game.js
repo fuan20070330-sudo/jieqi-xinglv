@@ -1,50 +1,51 @@
-/* 节气行旅 · 游戏状态机与界面 */
+/* 节气行旅 · 四季探索版 */
 (function () {
   'use strict';
 
-  const DATA = window.GAME_DATA;
-  const SOLAR = window.SolarClock;
-  const SAVE_KEY = 'jieqi-xinglv-save-v1';
+  const DATA = window.JOURNEY_DATA;
+  const SEASON_ORDER = ['spring', 'summer', 'autumn', 'winter'];
   const TERMS = DATA.terms;
   const TERM_BY_ID = Object.fromEntries(TERMS.map(term => [term.id, term]));
-  const SEASON_ORDER = ['spring', 'summer', 'autumn', 'winter'];
-  const PHASES = [
-    { key: 'watch', name: '观天', note: '校准黄经仪' },
-    { key: 'pentad', name: '识候', note: '重排三候' },
-    { key: 'myth', name: '辨误', note: '证据天平' },
-    { key: 'chain', name: '修复', note: '因果链' }
-  ];
-  const TRIAL_PHASES = [
-    { key: 'trial-order', name: '星序', note: '排列节气' },
-    { key: 'trial-match', name: '候证', note: '候牌归位' },
-    { key: 'trial-truth', name: '万象', note: '综合审校' }
-  ];
-  const REDUCED_MOTION = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const SAVE_KEY = 'jieqi-journey-save-v2';
+  const WORLD = { width: 1900, height: 1200 };
+  const MINI = { width: 960, height: 560 };
   const $ = (selector, root = document) => root.querySelector(selector);
   const $$ = (selector, root = document) => Array.from(root.querySelectorAll(selector));
+  const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
+  const distance = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+  const TAU = Math.PI * 2;
 
   const state = {
-    screen: 'home',
+    mode: 'menu',
     season: 'spring',
-    codexFilter: 'all',
-    run: null,
+    player: { x: 920, y: 620, facing: 'down', moving: false, step: 0 },
+    camera: { x: 0, y: 0 },
+    keys: {},
+    joystick: { x: 0, y: 0 },
+    nearTerm: null,
     save: loadSave(),
-    toastTimer: null,
+    sounds: true,
     audio: null,
-    modalReturnFocus: null
+    lastTime: 0,
+    menuTime: 0,
+    weatherTime: 0,
+    decorations: {},
+    mini: null,
+    toastTimer: null,
+    miniFrame: 0,
+    worldFrame: 0
   };
+
+  const els = {};
 
   function defaultSave() {
     return {
       version: DATA.version,
-      startedAt: new Date().toISOString(),
-      lastPlayed: new Date().toISOString(),
-      levels: {},
-      pentads: {},
-      trials: {},
-      mistakes: [],
-      lastRun: null,
-      settings: { sound: true }
+      stations: {},
+      currentSeason: 'spring',
+      chapterCelebrated: {},
+      sound: true,
+      updatedAt: new Date().toISOString()
     };
   }
 
@@ -57,64 +58,22 @@
       return {
         ...fallback,
         ...parsed,
-        levels: parsed.levels && typeof parsed.levels === 'object' ? parsed.levels : {},
-        pentads: parsed.pentads && typeof parsed.pentads === 'object' ? parsed.pentads : {},
-        trials: parsed.trials && typeof parsed.trials === 'object' ? parsed.trials : {},
-        mistakes: Array.isArray(parsed.mistakes) ? parsed.mistakes : [],
-        settings: { ...fallback.settings, ...(parsed.settings || {}) }
+        stations: parsed.stations && typeof parsed.stations === 'object' ? parsed.stations : {},
+        chapterCelebrated: parsed.chapterCelebrated && typeof parsed.chapterCelebrated === 'object' ? parsed.chapterCelebrated : {}
       };
     } catch (error) {
-      console.warn('存档读取失败，使用新存档。', error);
       return fallback;
     }
   }
 
   function persist() {
-    state.save.lastPlayed = new Date().toISOString();
-    try {
-      localStorage.setItem(SAVE_KEY, JSON.stringify(state.save));
-    } catch (error) {
-      console.warn('无法写入本地存档。', error);
-      showToast('浏览器阻止了本地存档，本次进度可能无法保留。');
-    }
-  }
-
-  function checkpointRun(run) {
-    if (!run) return;
-    state.save.lastRun = {
-      type: run.type,
-      targetId: run.targetId,
-      season: run.season,
-      phase: run.phase,
-      awaitingNext: Boolean(run.awaitingNext),
-      precision: run.precision,
-      score: run.score,
-      combo: run.combo,
-      bestCombo: run.bestCombo,
-      wrong: run.wrong,
-      hints: run.hints,
-      startedAt: run.startedAt
-    };
-    persist();
-  }
-
-  function clearLastRun() {
-    state.save.lastRun = null;
-    persist();
-  }
-
-  function hashString(text) {
-    let hash = 2166136261;
-    for (let i = 0; i < text.length; i += 1) {
-      hash ^= text.charCodeAt(i);
-      hash = Math.imul(hash, 16777619);
-    }
-    return hash >>> 0;
+    state.save.updatedAt = new Date().toISOString();
+    try { localStorage.setItem(SAVE_KEY, JSON.stringify(state.save)); } catch (error) { /* local file mode may restrict storage */ }
   }
 
   function seededRandom(seed) {
     let value = seed >>> 0;
-    return function random() {
+    return () => {
       value += 0x6D2B79F5;
       let t = value;
       t = Math.imul(t ^ (t >>> 15), t | 1);
@@ -123,1983 +82,1479 @@
     };
   }
 
-  function seededShuffle(items, seedText) {
-    const copy = items.slice();
-    const random = seededRandom(hashString(String(seedText)));
-    for (let i = copy.length - 1; i > 0; i -= 1) {
-      const j = Math.floor(random() * (i + 1));
-      [copy[i], copy[j]] = [copy[j], copy[i]];
-    }
-    return copy;
-  }
-
-  function escapeHTML(value) {
-    return String(value)
-      .replaceAll('&', '&amp;')
-      .replaceAll('<', '&lt;')
-      .replaceAll('>', '&gt;')
-      .replaceAll('"', '&quot;')
-      .replaceAll("'", '&#039;');
-  }
-
-  function mod360(value) {
-    return ((value % 360) + 360) % 360;
-  }
-
-  function angleDistance(a, b) {
-    const raw = Math.abs(mod360(a) - mod360(b));
-    return Math.min(raw, 360 - raw);
-  }
-
-  function starText(stars) {
-    const count = Math.max(0, Math.min(3, Number(stars) || 0));
-    return `<span>${'★'.repeat(count)}</span><span class="dim">${'★'.repeat(3 - count)}</span>`;
-  }
-
-  function seasonOf(term) {
-    return DATA.seasons[term.season];
-  }
-
-  function completedTermCount() {
-    return TERMS.filter(term => state.save.levels[term.id]?.completed).length;
-  }
-
   function seasonTerms(season) {
-    return TERMS.filter(term => term.season === season);
+    return DATA.seasons[season].terms.map(id => TERM_BY_ID[id]);
+  }
+
+  function completedCount(season) {
+    return seasonTerms(season).filter(term => state.save.stations[term.id]?.complete).length;
   }
 
   function seasonComplete(season) {
-    return seasonTerms(season).every(term => state.save.levels[term.id]?.completed);
+    return completedCount(season) === 6;
   }
 
-  function chapterUnlocked(season) {
-    if (season === 'spring') return true;
+  function seasonUnlocked(season) {
     const index = SEASON_ORDER.indexOf(season);
-    const previous = SEASON_ORDER[index - 1];
-    return Boolean(previous) && seasonComplete(previous);
+    return index === 0 || seasonComplete(SEASON_ORDER[index - 1]);
   }
 
-  function termUnlocked(term) {
-    if (!chapterUnlocked(term.season)) return false;
-    const list = seasonTerms(term.season);
-    const index = list.findIndex(item => item.id === term.id);
-    if (index <= 0) return true;
-    return Boolean(state.save.levels[list[index - 1].id]?.completed);
-  }
-
-  function trialUnlocked(season) {
-    return seasonComplete(season);
+  function firstUnlockedSeason() {
+    return SEASON_ORDER.find(season => !seasonComplete(season) && seasonUnlocked(season)) || 'winter';
   }
 
   function totalStars() {
-    let value = 0;
-    Object.values(state.save.levels).forEach(record => { value += Number(record.stars) || 0; });
-    Object.values(state.save.trials).forEach(record => { value += Number(record.stars) || 0; });
-    return value;
+    return Object.values(state.save.stations).reduce((sum, record) => sum + (Number(record.stars) || 0), 0);
   }
 
-  function termStarsTotal() {
-    return Object.values(state.save.levels).reduce((sum, record) => sum + (Number(record.stars) || 0), 0);
+  function allSeasonsComplete() {
+    return SEASON_ORDER.every(seasonComplete);
   }
 
-  function totalScore() {
-    return Object.values(state.save.levels).reduce((sum, record) => sum + (Number(record.bestScore) || 0), 0);
+  function stationRecord(termId) {
+    return state.save.stations[termId];
   }
 
-  function pentadKey(termId, index) {
-    return `${termId}::${index}`;
+  function cacheElements() {
+    Object.assign(els, {
+      shell: $('#gameShell'),
+      canvas: $('#gameCanvas'),
+      hud: $('#gameHud'),
+      menu: $('#menu'),
+      menuBtn: $('#menuBtn'),
+      startBtn: $('#startBtn'),
+      continueBtn: $('#continueBtn'),
+      menuSeasons: $('#menuSeasons'),
+      seasonTabs: $('#seasonTabs'),
+      stationCount: $('#stationCount'),
+      starCount: $('#starCount'),
+      soundBtn: $('#soundBtn'),
+      weatherChip: $('#weatherChip'),
+      weatherLabel: $('#weatherLabel'),
+      worldHelp: $('#worldHelp'),
+      prompt: $('#interactionPrompt'),
+      nearStationName: $('#nearStationName'),
+      touchControls: $('#touchControls'),
+      joystick: $('#joystick'),
+      joystickStick: $('#joystickStick'),
+      actionBtn: $('#actionBtn'),
+      miniOverlay: $('#miniOverlay'),
+      miniCanvas: $('#miniCanvas'),
+      miniSeason: $('#miniSeason'),
+      miniTitle: $('#miniTitle'),
+      miniCustom: $('#miniCustom'),
+      miniHint: $('#miniHint'),
+      miniProgress: $('#miniProgress'),
+      miniClose: $('#miniClose'),
+      chapterOverlay: $('#chapterOverlay'),
+      chapterSeal: $('#chapterSeal'),
+      chapterKicker: $('#chapterKicker'),
+      chapterTitle: $('#chapterTitle'),
+      chapterStars: $('#chapterStars'),
+      chapterCopy: $('#chapterCopy'),
+      nextSeasonBtn: $('#nextSeasonBtn'),
+      staySeasonBtn: $('#staySeasonBtn'),
+      finalOverlay: $('#finalOverlay'),
+      finalScore: $('#finalScore'),
+      replayBtn: $('#replayBtn'),
+      toast: $('#toast')
+    });
   }
 
-  function pentadCount() {
-    return Object.keys(state.save.pentads).filter(key => state.save.pentads[key]).length;
+  function setupDecorations() {
+    SEASON_ORDER.forEach((season, seasonIndex) => {
+      const random = seededRandom(20261025 + seasonIndex * 7919);
+      const items = [];
+      for (let i = 0; i < 58; i += 1) {
+        items.push({
+          type: i < 24 ? 'tree' : i < 44 ? 'flower' : i < 52 ? 'grass' : 'stone',
+          x: 90 + random() * (WORLD.width - 180),
+          y: 90 + random() * (WORLD.height - 180),
+          size: .65 + random() * .75,
+          tone: random(),
+          phase: random() * TAU
+        });
+      }
+      state.decorations[season] = items;
+    });
+  }
+
+  function setupCanvas() {
+    resizeWorldCanvas();
+    window.addEventListener('resize', () => {
+      resizeWorldCanvas();
+      if (state.mini) resizeMiniCanvas();
+    });
+  }
+
+  function resizeWorldCanvas() {
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const rect = els.canvas.getBoundingClientRect();
+    els.canvas.width = Math.max(1, Math.round(rect.width * dpr));
+    els.canvas.height = Math.max(1, Math.round(rect.height * dpr));
+    els.canvas.dataset.dpr = String(dpr);
+  }
+
+  function worldContext() {
+    const ctx = els.canvas.getContext('2d');
+    const dpr = Number(els.canvas.dataset.dpr || 1);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    return ctx;
   }
 
   function setSeasonTheme(season) {
     const meta = DATA.seasons[season];
-    if (!meta) return;
+    els.shell.classList.remove('season-spring', 'season-summer', 'season-autumn', 'season-winter');
+    els.shell.classList.add(`season-${season}`);
     document.documentElement.style.setProperty('--season', meta.color);
+    document.documentElement.style.setProperty('--season-bright', meta.bright);
     document.documentElement.style.setProperty('--season-pale', meta.pale);
-    document.documentElement.style.setProperty('--season-deep', meta.deep);
+    document.documentElement.style.setProperty('--season-ink', meta.ink);
+    els.weatherLabel.textContent = `${meta.weatherLabel} · ${meta.motto}`;
   }
 
-  function showScreen(name) {
-    state.screen = name;
-    $$('.screen').forEach(screen => screen.classList.toggle('is-active', screen.id === `screen-${name}`));
-    $$('.nav-btn').forEach(button => {
-      const target = button.dataset.nav;
-      button.classList.toggle('is-active', name === target || (name === 'game' && target === 'map'));
-    });
-    if (name === 'map') renderMap();
-    if (name === 'codex') renderCodex();
-    if (name === 'review') renderReview();
-    if (name === 'card') renderTravelCard();
-    window.scrollTo({ top: 0, behavior: REDUCED_MOTION ? 'auto' : 'smooth' });
-    if (name === 'game') setTimeout(() => $('#gamePanel')?.focus({ preventScroll: true }), 60);
-  }
-
-  function updateHome() {
-    const done = completedTermCount();
-    const stars = termStarsTotal();
-    const collected = pentadCount();
-    const startButton = $('#startBtn');
-    if (state.save.lastRun) {
-      startButton.textContent = '继续行旅';
-    } else if (done > 0) {
-      startButton.textContent = '重返星图';
-    } else {
-      startButton.textContent = '进入时轮';
-    }
-    const percent = Math.round((done / 24) * 100);
-    $('#homeProgress').innerHTML = `
-      <div><span>节气节点</span><strong>${done} / 24</strong></div>
-      <div><span>物候收录</span><strong>${collected} / 72</strong></div>
-      <div><span>星数</span><strong>${stars} / 72</strong></div>
-      <div class="progress-meter" aria-label="主线完成度 ${percent}%"><i style="width:${percent}%"></i></div>
-      ${done === 24 ? '<button class="btn btn--small btn--ghost" data-travel-card>查看时间行旅</button>' : ''}
-    `;
-    const now = new Date();
-    const liveTerm = SOLAR.currentTerm(now, TERMS);
-    const longitude = SOLAR.solarApparentLongitude(now);
-    const declination = SOLAR.solarDeclination(now);
-    $('#liveTerm').textContent = `今近${liveTerm.name} · ${longitude.toFixed(1)}°`;
-    $('#homeLiveReading').textContent = `当前近似黄经 ${longitude.toFixed(1)}° · 直射 ${SOLAR.declinationText(declination)}`;
-    const needle = $('#homeChronometer .chrono-needle');
-    if (needle) needle.style.setProperty('--needle-angle', `${longitude}deg`);
-  }
-
-  function polarPoint(cx, cy, radius, angle) {
-    const rad = (angle - 90) * Math.PI / 180;
-    return { x: cx + radius * Math.cos(rad), y: cy + radius * Math.sin(rad) };
-  }
-
-  function arcPath(cx, cy, radius, startAngle, endAngle) {
-    const start = polarPoint(cx, cy, radius, startAngle);
-    const end = polarPoint(cx, cy, radius, endAngle);
-    const diff = mod360(endAngle - startAngle);
-    const large = diff > 180 ? 1 : 0;
-    return `M ${start.x.toFixed(2)} ${start.y.toFixed(2)} A ${radius} ${radius} 0 ${large} 1 ${end.x.toFixed(2)} ${end.y.toFixed(2)}`;
-  }
-
-  function buildAmbient() {
-    const holder = $('#ambientStars');
-    const random = seededRandom(20260204);
-    const fragment = document.createDocumentFragment();
-    for (let i = 0; i < 68; i += 1) {
-      const dot = document.createElement('i');
-      dot.className = 'star-dot';
-      dot.style.left = `${(random() * 100).toFixed(2)}%`;
-      dot.style.top = `${(random() * 100).toFixed(2)}%`;
-      dot.style.setProperty('--o', (0.15 + random() * 0.5).toFixed(2));
-      dot.style.setProperty('--dur', `${(3.5 + random() * 6).toFixed(2)}s`);
-      dot.style.setProperty('--delay', `${(-random() * 6).toFixed(2)}s`);
-      fragment.appendChild(dot);
-    }
-    holder.appendChild(fragment);
-  }
-
-  function buildHomeDial() {
-    const ticks = $('#homeDialTicks');
-    const arcs = $('#homeSeasonArcs');
-    const nodes = $('#homeOrbitNodes');
-    let tickMarkup = '';
-    for (let degree = 0; degree < 360; degree += 5) {
-      const major = degree % 15 === 0;
-      const outer = 266;
-      const inner = major ? 246 : 254;
-      const a = polarPoint(310, 310, outer, degree);
-      const b = polarPoint(310, 310, inner, degree);
-      tickMarkup += `<line class="chrono-tick${major ? ' chrono-tick--major' : ''}" x1="${a.x.toFixed(2)}" y1="${a.y.toFixed(2)}" x2="${b.x.toFixed(2)}" y2="${b.y.toFixed(2)}"/>`;
-    }
-    [['0°', 0], ['90°', 90], ['180°', 180], ['270°', 270]].forEach(([label, degree]) => {
-      const p = polarPoint(310, 310, 225, degree);
-      tickMarkup += `<text class="chrono-label" x="${p.x}" y="${p.y}" text-anchor="middle" dominant-baseline="middle">${label}</text>`;
-    });
-    ticks.innerHTML = tickMarkup;
-
-    let arcMarkup = '';
-    let nodeMarkup = '';
-    SEASON_ORDER.forEach(season => {
-      const meta = DATA.seasons[season];
-      const terms = seasonTerms(season);
-      const start = (terms[0].longitude + 360) % 360;
-      arcMarkup += `<path class="chrono-season" d="${arcPath(310, 310, 183, start, start + 90)}" style="--arc-color:${meta.color}"/>`;
-      const mid = polarPoint(310, 310, 139, start + 45);
-      arcMarkup += `<text class="chrono-season-label" x="${mid.x}" y="${mid.y}" text-anchor="middle" dominant-baseline="middle" style="--arc-color:${meta.color}">${meta.name}</text>`;
-      terms.forEach(term => {
-        const p = polarPoint(310, 310, 206, (term.longitude + 360) % 360);
-        const node = polarPoint(310, 310, 201, (term.longitude + 360) % 360);
-        nodeMarkup += `<circle class="chrono-term-dot chrono-term-dot--season" cx="${node.x}" cy="${node.y}" r="4" style="--arc-color:${meta.color}"><title>${term.name}</title></circle>`;
-        if (term.order % 2 === 0) {
-          const label = polarPoint(310, 310, 231, (term.longitude + 360) % 360);
-          nodeMarkup += `<text class="chrono-label" x="${label.x}" y="${label.y}" text-anchor="middle" dominant-baseline="middle">${term.name}</text>`;
-        }
-      });
-    });
-    arcs.innerHTML = arcMarkup;
-    nodes.innerHTML = nodeMarkup;
-  }
-
-  function renderMap() {
-    if (!chapterUnlocked(state.season)) {
-      state.season = SEASON_ORDER.find(season => chapterUnlocked(season)) || 'spring';
-    }
-    setSeasonTheme(state.season);
-    const done = completedTermCount();
-    const stars = termStarsTotal();
-    const collected = pentadCount();
-    const trialsDone = Object.values(state.save.trials).filter(record => record.completed).length;
-    $('#mapStats').innerHTML = `
-      <div class="stat-pill"><span>主线节点</span><strong>${done} / 24</strong></div>
-      <div class="stat-pill"><span>节气星数</span><strong>${stars} / 72</strong></div>
-      <div class="stat-pill"><span>物候收录</span><strong>${collected} / 72</strong></div>
-      <div class="stat-pill"><span>章末印记</span><strong>${trialsDone} / 4</strong></div>
-    `;
-    $('#seasonTabs').innerHTML = SEASON_ORDER.map(season => {
-      const meta = DATA.seasons[season];
-      const unlocked = chapterUnlocked(season);
-      return `<button class="season-tab ${state.season === season ? 'is-active' : ''}" role="tab" aria-selected="${state.season === season}" style="--tab-color:${meta.color}" data-season="${season}" ${unlocked ? '' : 'disabled'}>${meta.title.split(' · ')[0]} · ${meta.name}</button>`;
-    }).join('');
-
+  function renderHUD() {
     const meta = DATA.seasons[state.season];
-    const list = seasonTerms(state.season);
-    const complete = list.filter(term => state.save.levels[term.id]?.completed).length;
-    const progress = Math.round((complete / 6) * 100);
-    const seals = list.map(term => `<span class="mini-seal ${state.save.levels[term.id]?.completed ? 'is-done' : ''}" title="${term.name}">${term.glyph}</span>`).join('');
-    $('#chapterPanel').style.setProperty('--chapter', meta.color);
-    $('#chapterPanel').innerHTML = `
-      <div class="chapter-overview">
-        <div class="chapter-orbit"><span class="chapter-orbit__char">${meta.name}</span><span class="chapter-orbit__label">SEASON CLOCK</span></div>
-        <div class="chapter-copy">
-          <h3>${meta.title}</h3>
-          <p>${meta.motto}。本章共 6 个节气节点；依次校准黄经、辨认三候、辨析误区并修复物候因果链。章节试炼会在 6 个节点完成后开启。</p>
-        </div>
-        <div class="chapter-progress">
-          <div class="chapter-progress__row"><span>本章修复进度</span><strong>${complete} / 6</strong></div>
-          <div class="chapter-progress__bar"><i style="width:${progress}%"></i></div>
-          <div class="chapter-progress__seal">${seals}</div>
-        </div>
-      </div>
-      <div class="level-grid">
-        ${list.map((term, index) => renderLevelNode(term, index)).join('')}
-      </div>
-    `;
-
-    const trial = DATA.trials.find(item => item.season === state.season);
-    const trialRecord = state.save.trials[trial.id];
-    const unlocked = trialUnlocked(state.season);
-    $('#trialPanel').style.setProperty('--season', meta.color);
-    $('#trialPanel').innerHTML = `
-      <div class="trial-panel__sigil">${unlocked ? '试' : '锁'}</div>
-      <div class="trial-panel__copy">
-        <h3>章末试炼 · ${trial.name}</h3>
-        <p>${unlocked ? `综合检验${meta.name}季节气星序、物候归属与科学辨析。${trialRecord?.completed ? `最佳 ${trialRecord.bestScore} 分 · ${'★'.repeat(trialRecord.stars)}` : '尚未校准。'}` : '完成本章全部 6 个节气节点后开启。'}</p>
-      </div>
-      <button class="btn ${unlocked ? 'btn--primary' : 'btn--ghost'}" data-trial="${trial.id}" ${unlocked ? '' : 'disabled'}>${trialRecord?.completed ? '重试试炼' : unlocked ? '进入试炼' : '尚未解锁'}</button>
-    `;
-  }
-
-  function renderLevelNode(term, index) {
-    const record = state.save.levels[term.id];
-    const unlocked = termUnlocked(term);
-    const complete = Boolean(record?.completed);
-    const classes = ['level-node', unlocked ? 'is-available' : 'is-locked', complete ? 'is-completed' : ''].join(' ');
-    const stateText = complete ? '已修复' : unlocked ? '待校准' : '未解锁';
-    return `
-      <button class="${classes}" data-level="${term.id}" aria-label="${term.name}，${stateText}${complete ? `，${record.stars}星` : ''}">
-        <span class="level-node__top">
-          <span class="level-node__order">NODE ${String(index + 1).padStart(2, '0')}</span>
-          <span class="level-node__gem">${unlocked ? term.glyph : '·'}</span>
-        </span>
-        <span class="level-node__glyph">${term.name.slice(0, 1)}</span>
-        <span class="level-node__name">${term.name}</span>
-        <span class="level-node__meta">黄经 ${(term.longitude + 360) % 360}° · ${term.dateHint}</span>
-        ${complete ? `<span class="level-node__stars">${starText(record.stars)}</span>` : unlocked ? '<span class="level-node__stars" style="color:var(--ink-dim)">未校准</span>' : `<span class="level-node__lock"><svg viewBox="0 0 24 24"><rect x="5" y="10" width="14" height="10" rx="2"/><path d="M8 10V7a4 4 0 018 0v3"/></svg> 完成前一节点</span>`}
-      </button>
-    `;
-  }
-
-  function buildTermOptions(term) {
-    const important = [term, TERMS[(term.order + 5) % 24], TERMS[(term.order + 11) % 24], TERMS[(term.order + 17) % 24]];
-    return seededShuffle(important, `${term.id}-terms`);
-  }
-
-  function buildPentadOptions(term) {
-    const correct = term.pentads.map((pentad, index) => ({
-      key: pentadKey(term.id, index),
-      termId: term.id,
-      index,
-      name: pentad.name,
-      note: pentad.note,
-      correct: true
-    }));
-    const distances = [5, 11, 17];
-    const distractors = distances.map((distance, i) => {
-      const source = TERMS[(term.order + distance) % 24];
-      const index = (term.order + i + 1) % 3;
-      return {
-        key: pentadKey(source.id, index),
-        termId: source.id,
-        index,
-        name: source.pentads[index].name,
-        note: source.pentads[index].note,
-        correct: false
-      };
-    });
-    return seededShuffle(correct.concat(distractors), `${term.id}-pentad-options`);
-  }
-
-  function buildEvidenceOptions(term) {
-    const options = [
-      ...term.myth.evidence.map((item, index) => ({ ...item, ok: true, key: `e${index}` })),
-      ...term.myth.traps.map((item, index) => ({ text: item.text, tag: '干扰项', why: item.why, ok: false, key: `t${index}` }))
-    ];
-    return seededShuffle(options, `${term.id}-evidence`);
-  }
-
-  function buildChainPool(term) {
-    return seededShuffle(term.chain.map((text, index) => ({ text, index })), `${term.id}-chain`);
-  }
-
-  function initialWatchAngle(term) {
-    const offset = term.order % 2 === 0 ? 25 : -25;
-    return mod360(term.longitude + offset);
-  }
-
-  function createTermRun(term, checkpoint = null) {
-    const base = {
-      type: 'term',
-      targetId: term.id,
-      season: term.season,
-      phase: checkpoint?.phase || 0,
-      awaitingNext: Boolean(checkpoint?.awaitingNext),
-      precision: checkpoint?.precision ?? 100,
-      score: checkpoint?.score ?? 0,
-      combo: checkpoint?.combo ?? 0,
-      bestCombo: checkpoint?.bestCombo ?? 0,
-      wrong: checkpoint?.wrong ?? 0,
-      hints: checkpoint?.hints ?? 0,
-      startedAt: checkpoint?.startedAt || new Date().toISOString(),
-      phaseFeedback: null,
-      watch: {
-        angle: initialWatchAngle(term),
-        locked: false,
-        hintShown: false,
-        message: ''
-      },
-      pentad: {
-        options: buildPentadOptions(term),
-        selection: [],
-        stage: 'select',
-        orderPool: [],
-        ordered: [],
-        attempts: 0,
-        message: ''
-      },
-      myth: {
-        options: buildEvidenceOptions(term),
-        selected: [],
-        attempts: 0,
-        message: ''
-      },
-      chain: {
-        pool: buildChainPool(term),
-        placed: [],
-        message: ''
-      }
-    };
-    return base;
-  }
-
-  function createTrialRun(trial, checkpoint = null) {
-    const orderOptions = seededShuffle(trial.order.map(id => TERM_BY_ID[id]), `${trial.id}-order`);
-    const matchOptions = trial.match.map((pair, index) => ({
-      key: `m${index}`,
-      termId: pair.termId,
-      pentad: pair.pentad,
-      correct: true
-    }));
-    const usedTerms = new Set(trial.order);
-    const distractorTerms = TERMS.filter(term => !usedTerms.has(term.id));
-    [0, 1, 2].forEach((offset) => {
-      const term = distractorTerms[(trial.season.length + offset * 7) % distractorTerms.length];
-      const pentadIndex = (offset + trial.order.length) % 3;
-      matchOptions.push({
-        key: `d${offset}`,
-        termId: term.id,
-        pentad: term.pentads[pentadIndex].name,
-        correct: false
-      });
-    });
-    return {
-      type: 'trial',
-      targetId: trial.id,
-      season: trial.season,
-      phase: checkpoint?.phase || 0,
-      awaitingNext: Boolean(checkpoint?.awaitingNext),
-      precision: checkpoint?.precision ?? 100,
-      score: checkpoint?.score ?? 0,
-      combo: checkpoint?.combo ?? 0,
-      bestCombo: checkpoint?.bestCombo ?? 0,
-      wrong: checkpoint?.wrong ?? 0,
-      hints: checkpoint?.hints ?? 0,
-      startedAt: checkpoint?.startedAt || new Date().toISOString(),
-      phaseFeedback: null,
-      trial: {
-        orderOptions,
-        orderPicks: [],
-        matchOptions: seededShuffle(matchOptions, `${trial.id}-match`),
-        matched: {},
-        statementSelection: [],
-        message: ''
-      }
-    };
-  }
-
-  function startTerm(termId) {
-    const term = TERM_BY_ID[termId];
-    if (!term) return;
-    if (!termUnlocked(term)) {
-      showToast(termUnlocked(term) ? '该节点尚未解锁。' : '先完成前一节气，才能接入这条星轨。');
-      return;
-    }
-    state.season = term.season;
-    state.run = createTermRun(term);
-    checkpointRun(state.run);
-    setSeasonTheme(term.season);
-    showScreen('game');
-    renderGame();
-  }
-
-  function startTrial(trialId) {
-    const trial = DATA.trials.find(item => item.id === trialId);
-    if (!trial) return;
-    if (!trialUnlocked(trial.season)) {
-      showToast('完成本章 6 个节气节点后，试炼才会开启。');
-      return;
-    }
-    state.season = trial.season;
-    state.run = createTrialRun(trial);
-    checkpointRun(state.run);
-    setSeasonTheme(trial.season);
-    showScreen('game');
-    renderGame();
-  }
-
-  function resumeLastRun() {
-    const checkpoint = state.save.lastRun;
-    if (!checkpoint) {
-      showScreen('map');
-      return;
-    }
-    let run = null;
-    if (checkpoint.type === 'trial') {
-      const trial = DATA.trials.find(item => item.id === checkpoint.targetId);
-      if (!trial) {
-        clearLastRun();
-        showScreen('map');
-        return;
-      }
-      run = createTrialRun(trial, checkpoint);
-    } else {
-      const term = TERM_BY_ID[checkpoint.targetId];
-      if (!term) {
-        clearLastRun();
-        showScreen('map');
-        return;
-      }
-      run = createTermRun(term, checkpoint);
-    }
-    state.season = checkpoint.season;
-    state.run = run;
-    setSeasonTheme(run.season);
-    showScreen('game');
-    renderGame();
-  }
-
-  function currentPhases(run) {
-    return run.type === 'trial' ? TRIAL_PHASES : PHASES;
-  }
-
-  function currentTarget(run) {
-    return run.type === 'trial'
-      ? DATA.trials.find(item => item.id === run.targetId)
-      : TERM_BY_ID[run.targetId];
-  }
-
-  function renderGame() {
-    const run = state.run;
-    if (!run) {
-      showScreen('map');
-      return;
-    }
-    const target = currentTarget(run);
-    const meta = DATA.seasons[run.season];
-    const phases = currentPhases(run);
-    const currentPhase = phases[Math.min(run.phase, phases.length - 1)];
-    $('#screen-game').style.setProperty('--season', meta.color);
-    $('#screen-game').style.setProperty('--chapter', meta.color);
-    $('#gameKicker').textContent = run.type === 'trial'
-      ? `${meta.name}章 · ${target.name} · 章末试炼`
-      : `${meta.name}章 · 第 ${target.order + 1} 节 · ${target.pinyin}`;
-    $('#gameTitle').textContent = run.awaitingNext ? '校准记录已封存' : currentPhase.name;
-    $('#scoreValue').textContent = run.score;
-    $('#comboValue').textContent = `×${run.combo}`;
-    $('#precisionValue').textContent = `${run.precision}%`;
-    $('#railTerm').innerHTML = run.type === 'trial'
-      ? `<div class="rail-term__season">${meta.name}章试炼</div><div class="rail-term__name">${target.name}</div><div class="rail-term__long">综合节点</div>`
-      : `<div class="rail-term__season">${meta.name}章 · 黄经 ${target.longitude}°</div><div class="rail-term__name">${target.name}</div><div class="rail-term__long">${target.dateHint}</div>`;
-    $('#phaseList').innerHTML = phases.map((phase, index) => {
-      const done = index < run.phase || (index === run.phase && run.awaitingNext);
-      const active = index === run.phase && !run.awaitingNext;
-      return `<li class="phase-item ${done ? 'is-done' : ''} ${active ? 'is-active' : ''}"><span class="phase-item__num"><span>${String(index + 1).padStart(2, '0')}</span></span><span class="phase-item__copy"><strong>${phase.name}</strong><small>${phase.note}</small></span></li>`;
+    els.seasonTabs.innerHTML = SEASON_ORDER.map(season => {
+      const item = DATA.seasons[season];
+      const unlocked = seasonUnlocked(season);
+      const active = season === state.season;
+      return `<button class="season-tab ${active ? 'is-active' : ''}" data-season="${season}" style="--tab-color:${item.color}" ${unlocked ? '' : 'disabled'} aria-pressed="${active}">
+        <span></span>${item.name} <small>${completedCount(season)}/6</small>
+      </button>`;
     }).join('');
-
-    if (run.awaitingNext) {
-      renderPhaseComplete(run);
-    } else if (run.type === 'trial') {
-      renderTrialPhase(run, target, run.phase);
-    } else {
-      renderTermPhase(run, target, run.phase);
-    }
+    els.stationCount.textContent = `${completedCount(state.season)} / 6`;
+    els.starCount.textContent = `★ ${totalStars()}`;
+    els.weatherChip.hidden = state.mode === 'menu';
+    els.worldHelp.hidden = state.mode !== 'world';
+    setSeasonTheme(state.season);
+    renderMenuSeasons();
+    updateSoundButton();
   }
 
-  function updateGameHud(run) {
-    $('#scoreValue').textContent = run.score;
-    $('#comboValue').textContent = `×${run.combo}`;
-    $('#precisionValue').textContent = `${run.precision}%`;
-  }
-
-  function registerError(run) {
-    run.precision = Math.max(40, run.precision - 8);
-    run.combo = 0;
-    run.wrong += 1;
-    playSound('error');
-    updateGameHud(run);
-    bumpHud('#precisionValue', '#comboValue');
-    pulseGameFeedback('error', '连击中断');
-    checkpointRun(run);
-  }
-
-  function phaseBaseScore(run) {
-    return run.type === 'trial' ? 334 : 250;
-  }
-
-  function awardPhase(run, title, text) {
-    run.combo += 1;
-    run.bestCombo = Math.max(run.bestCombo, run.combo);
-    const gained = Math.round(phaseBaseScore(run) * run.precision / 100);
-    run.score = Math.min(1000, run.score + gained);
-    run.awaitingNext = true;
-    run.phaseFeedback = { title, text };
-    playSound('correct');
-    bumpHud('#scoreValue', '#comboValue');
-    pulseGameFeedback('success', `+${gained}  ·  连击 ×${run.combo}`);
-    checkpointRun(run);
-    setTimeout(() => {
-      if (state.run === run && run.awaitingNext) renderGame();
-    }, 420);
-  }
-
-  function renderPhaseComplete(run) {
-    const phases = currentPhases(run);
-    const phase = phases[run.phase];
-    const last = run.phase >= phases.length - 1;
-    const feedback = run.phaseFeedback || {
-      title: `${phase.name}记录已校准`,
-      text: '这段校准已写入本地存档。继续下一段，修复时轮。'
-    };
-    $('#gamePanel').innerHTML = `
-      <div class="instruction-card instruction-card--accent">
-        <span class="instruction-card__label">CALIBRATION LOG</span>
-        <p><strong>${escapeHTML(feedback.title)}</strong> · ${escapeHTML(feedback.text)}</p>
-      </div>
-      <div style="min-height:390px;display:grid;place-items:center;text-align:center">
-        <div>
-          <div class="result-seal" style="margin:0 auto 20px;box-shadow:none">${last ? '成' : phase.name.slice(0,1)}</div>
-          <h3 style="margin:0 0 8px;color:#eee4d1;font-size:32px;font-weight:500">${escapeHTML(feedback.title)}</h3>
-          <p style="max-width:520px;margin:0 auto;color:#949e9b;font-size:12px;line-height:1.9">${escapeHTML(feedback.text)}</p>
-          <div class="tag-row" style="justify-content:center;margin-top:18px">
-            <span class="tag tag--season">当前精度 ${run.precision}%</span>
-            <span class="tag tag--season">最高连击 ×${run.bestCombo}</span>
-            <span class="tag tag--season">累计时轮分 ${run.score}</span>
-          </div>
-        </div>
-      </div>
-      <div class="phase-actions">
-        <span class="phase-actions__note">${last ? '完成本节点后，下一节点通常会在星图上解锁。' : `下一段：${phases[run.phase + 1].name} · ${phases[run.phase + 1].note}`}</span>
-        <button class="btn btn--primary" data-action="continue-phase">${last ? (run.type === 'trial' ? '封存试炼印记' : '完成节气修复') : '继续校准'}</button>
-      </div>
-    `;
-  }
-
-  function continuePhase() {
-    const run = state.run;
-    if (!run?.awaitingNext) return;
-    const phases = currentPhases(run);
-    if (run.phase >= phases.length - 1) {
-      finishRun(run);
-      return;
-    }
-    run.phase += 1;
-    run.awaitingNext = false;
-    run.phaseFeedback = null;
-    checkpointRun(run);
-    renderGame();
-  }
-
-  function renderTermPhase(run, term, phaseIndex) {
-    if (phaseIndex === 0) renderWatchPhase(run, term);
-    else if (phaseIndex === 1) renderPentadPhase(run, term);
-    else if (phaseIndex === 2) renderMythPhase(run, term);
-    else renderChainPhase(run, term);
-  }
-
-  function feedbackMarkup(message, correct = false) {
-    if (!message) return '';
-    return `<div class="feedback-box is-visible ${correct ? 'is-correct' : 'is-wrong'}"><span class="feedback-box__pulse"></span>${escapeHTML(message)}</div>`;
-  }
-
-  function shortText(value, max = 28) {
-    const clean = String(value).replace(/^古人的观察记录：/, '');
-    return clean.length > max ? `${clean.slice(0, max)}…` : clean;
-  }
-
-  function pentadSymbol(name) {
-    if (/雁|鸿|燕|鸟|鸠|鹊|雉|鸡|鹰|鵙|鹖|仓庚|戴胜|反舌/.test(name)) return '羽';
-    if (/虫|蛰|蚯蚓|蟋蟀|螳螂|蜩|蝉|萤|蝼蝈|蛙/.test(name)) return '虫';
-    if (/鱼|獭|蛤|蜃/.test(name)) return '渊';
-    if (/桃|桐|萍|草|木|菊|麦|禾|瓜|菜|兰|荔|桑|柳|华|荣/.test(name)) return '木';
-    if (/冰|冻|水|泉|涸|露|霜|雪/.test(name)) return '水';
-    if (/雷|电|雨|风/.test(name)) return '气';
-    if (/鹿|虎|豺|鹰|雉|鼠/.test(name)) return '兽';
-    if (/虹/.test(name)) return '虹';
-    return '候';
-  }
-
-  function evidenceSymbol(value) {
-    if (/太阳|黄经|直射|昼夜|地球|回归线|近日点|远日点|公转/.test(value)) return '日';
-    if (/气温|天气|降水|雷|云|湿度|风|雨|雪|高温|冷空气/.test(value)) return '象';
-    if (/物候|候|虫|鸟|植物|草木|鹿|花|叶|生物|迁徙/.test(value)) return '生';
-    if (/古代|习俗|文化|历法|诗句|传统/.test(value)) return '文';
-    if (/水汽|凝结|凝华|露|霜|冰|物态/.test(value)) return '水';
-    return '证';
-  }
-
-  function chainSymbol(value) {
-    if (/太阳|黄经|直射|回归线|地球/.test(value)) return '日';
-    if (/昼夜|光|热|温|辐射|蓄热|失热/.test(value)) return '光';
-    if (/云|雨|风|水汽|湿|对流|冷空气|气压/.test(value)) return '气';
-    if (/芽|花|鸟|虫|冰|雪|露|霜|叶|雁|草木|鸣|迁徙|蛰/.test(value)) return '候';
-    return '纹';
-  }
-
-  function pulseGameFeedback(kind, text = '') {
-    const panel = $('#gamePanel');
-    if (!panel) return;
-    panel.classList.remove('is-success-pulse', 'is-error-pulse');
-    void panel.offsetWidth;
-    panel.classList.add(kind === 'success' ? 'is-success-pulse' : 'is-error-pulse');
-    setTimeout(() => panel.classList.remove('is-success-pulse', 'is-error-pulse'), 520);
-    if (text) {
-      const pop = document.createElement('div');
-      pop.className = `reward-pop ${kind === 'success' ? 'is-positive' : 'is-negative'}`;
-      pop.textContent = text;
-      panel.appendChild(pop);
-      setTimeout(() => pop.remove(), 900);
-    }
-  }
-
-  function bumpHud(...selectors) {
-    selectors.forEach(selector => {
-      const node = $(selector);
-      if (!node) return;
-      node.classList.remove('hud-pop');
-      void node.offsetWidth;
-      node.classList.add('hud-pop');
-    });
-  }
-
-  function dialMarkup(run, term) {
-    const angle = mod360(run.watch.angle);
-    const target = mod360(term.longitude);
-    let tickMarkup = '';
-    for (let degree = 0; degree < 360; degree += 5) {
-      const major = degree % 15 === 0;
-      const outer = 201;
-      const inner = major ? 178 : 187;
-      const a = polarPoint(210, 210, outer, degree);
-      const b = polarPoint(210, 210, inner, degree);
-      tickMarkup += `<line class="dial-tick${major ? ' dial-tick--major' : ''}" x1="${a.x.toFixed(2)}" y1="${a.y.toFixed(2)}" x2="${b.x.toFixed(2)}" y2="${b.y.toFixed(2)}"/>`;
-    }
-    let targets = '';
-    const targetLineA = polarPoint(210, 210, 162, target);
-    const targetLineB = polarPoint(210, 210, 199, target);
-    targets += `<line class="dial-target-line" x1="${targetLineA.x}" y1="${targetLineA.y}" x2="${targetLineB.x}" y2="${targetLineB.y}"/>`;
-    const targetRing = polarPoint(210, 210, 161, target);
-    targets += `<circle class="dial-target" cx="${targetRing.x}" cy="${targetRing.y}" r="8"/>`;
-    const targetLabel = polarPoint(210, 210, 142, target);
-    targets += `<text class="dial-target-label" x="${targetLabel.x}" y="${targetLabel.y}" text-anchor="middle" dominant-baseline="middle">目标</text>`;
-    let degreeLabels = '';
-    [0, 90, 180, 270].forEach(degree => {
-      const p = polarPoint(210, 210, 219, degree);
-      degreeLabels += `<text class="dial-degree" x="${p.x}" y="${p.y}" text-anchor="middle" dominant-baseline="middle">${degree}°</text>`;
-    });
-    const aligned = angleDistance(angle, target) <= 4;
-    return `
-      <div class="dial-wrap ${aligned ? 'is-aligned' : ''}">
-        <svg class="dial-svg" viewBox="0 0 420 420" role="img" aria-label="可旋转太阳黄经仪，当前 ${angle} 度，目标 ${target} 度">
-          <defs>
-            <radialGradient id="sunDialGradient" cx="38%" cy="32%" r="72%">
-              <stop offset="0" stop-color="#f2dea9"/><stop offset=".55" stop-color="#d7b466"/><stop offset="1" stop-color="#9b4d3d"/>
-            </radialGradient>
-          </defs>
-          <circle class="dial-face" cx="210" cy="210" r="205"/>
-          <circle class="dial-inner" cx="210" cy="210" r="158"/>
-          <circle class="dial-inner" cx="210" cy="210" r="108"/>
-          <circle class="dial-sun-arc" cx="210" cy="210" r="132"/>
-          ${tickMarkup}
-          ${degreeLabels}
-          ${targets}
-          <g transform="rotate(${angle} 210 210)">
-            <line class="dial-needle-line" x1="210" y1="210" x2="210" y2="44"/>
-            <circle class="dial-needle-cap" cx="210" cy="58" r="7"/>
-          </g>
-          <circle class="dial-axis" cx="210" cy="210" r="11"/>
-          <g transform="rotate(${angle} 210 210)">
-            <circle class="dial-sun-core" cx="210" cy="210" r="49"/>
-            <path class="dial-sun-rays" d="M210 137v-17M210 300v-17M137 210h-17M300 210h-17M158 158l-12-12M274 274l-12-12M262 158l12-12M146 274l12-12"/>
-            <text x="210" y="217" text-anchor="middle" style="font-family:var(--font-display);font-size:27px;fill:#192129">日</text>
-          </g>
-        </svg>
-      </div>
-      <div class="dial-readout">
-        <button class="dial-adjust" data-action="dial-minus" aria-label="黄经减少5度">−</button>
-        <strong id="dialAngleText">${Math.round(angle)}°</strong>
-        <button class="dial-adjust" data-action="dial-plus" aria-label="黄经增加5度">＋</button>
-        <span>拖动 / 方向键</span>
-      </div>
-      <input class="dial-range" id="dialRange" type="range" min="0" max="359" step="1" value="${Math.round(angle)}" aria-label="校准太阳黄经角度">
-    `;
-  }
-
-  function renderWatchPhase(run, term) {
-    const target = mod360(term.longitude);
-    const aligned = angleDistance(run.watch.angle, target) <= 4;
-    const parts = term.watch.detail.split(' · ');
-    const direct = (parts[0] || '').replace('直射点', '').replace('约', '');
-    const daylight = (parts[1] || '').replace('北半球', '');
-    const choices = run.watch.locked ? `
-      <div class="term-choice-block">
-        <div class="choice-prompt">
-          <span class="choice-prompt__seal">锁</span>
-          <div><small>刻度已接入时轮</small><strong>哪枚节气印属于这里？</strong></div>
-        </div>
-        <div class="term-choice-grid">
-          ${buildTermOptions(term).map(option => `<button class="term-choice" data-term-choice="${option.id}" aria-label="选择${option.name}">
-            <span class="term-choice__glyph">${option.glyph}</span>
-            <span class="term-choice__copy"><strong>${option.name}</strong><small>${option.pinyin}</small></span>
-          </button>`).join('')}
-        </div>
-      </div>
-    ` : '';
-    $('#gamePanel').innerHTML = `
-      <div class="stage-head stage-head--compact">
-        <div>
-          <div class="stage-kicker">PHASE 01 · OBSERVE</div>
-          <h3>校准日轮</h3>
-          <p>把光点拖进金色目标环。</p>
-        </div>
-        <div class="stage-objective"><strong>目标刻度</strong>${target}° · 容差 ±4°</div>
-      </div>
-      <div class="watch-layout">
-        <div class="watch-visual">${dialMarkup(run, term)}</div>
-        <div class="watch-readout">
-          <div class="observe-panel">
-            <div class="observe-panel__head"><span>今日观测</span><strong>${term.watch.cue.replace('视黄经 ', '')}</strong></div>
-            <div class="observe-stats">
-              <div class="observe-stat"><span class="observe-stat__glyph">日</span><small>直射点</small><strong>${direct}</strong></div>
-              <div class="observe-stat"><span class="observe-stat__glyph">昼</span><small>昼夜</small><strong>${daylight}</strong></div>
-              <div class="observe-stat"><span class="observe-stat__glyph">序</span><small>节点</small><strong>${String(term.order + 1).padStart(2, '0')}/24</strong></div>
-            </div>
-            <div class="observe-panel__foot"><span>${term.dateHint}</span><span>拖动 / 方向键</span></div>
-          </div>
-          <div class="alignment-state ${aligned ? 'is-aligned' : ''}" id="alignmentState"><span class="alignment-state__light"></span><span id="alignmentText">${aligned ? '光点已进入目标环 · 可以锁定' : `再转 ${Math.round(angleDistance(run.watch.angle, target))}°`}</span></div>
-          ${run.watch.hintShown ? `<div class="clue-whisper">${term.watch.hint}</div>` : ''}
-          ${feedbackMarkup(run.watch.message)}
-          <div class="phase-actions">
-            <span class="phase-actions__note">${run.watch.locked ? '刻度已锁定。' : '提示会扣除 5% 精度。'}</span>
-            ${run.watch.hintShown || run.watch.locked ? '' : '<button class="btn btn--quiet btn--small" data-action="dial-hint">提示</button>'}
-            <button class="btn btn--primary" data-action="lock-dial" ${aligned ? '' : 'disabled'}>${run.watch.locked ? '已锁定' : '锁定刻度'}</button>
-          </div>
-        </div>
-      </div>
-      ${choices}
-    `;
-    bindDialRange();
-    bindDialPointer();
-  }
-
-  function bindDialPointer() {
-    const svg = $('#gamePanel .dial-svg');
-    if (!svg) return;
-    let dragging = false;
-    const applyPointer = event => {
-      const run = state.run;
-      if (!run || run.type !== 'term') return;
-      const rect = svg.getBoundingClientRect();
-      const dx = event.clientX - (rect.left + rect.width / 2);
-      const dy = event.clientY - (rect.top + rect.height / 2);
-      const angle = mod360(Math.atan2(dx, -dy) * 180 / Math.PI);
-      run.watch.angle = Math.round(angle);
-      updateDialView();
-    };
-    svg.addEventListener('pointerdown', event => {
-      dragging = true;
-      svg.setPointerCapture(event.pointerId);
-      svg.classList.add('is-dragging');
-      applyPointer(event);
-      playSound('tick');
-      event.preventDefault();
-    });
-    svg.addEventListener('pointermove', event => {
-      if (!dragging) return;
-      applyPointer(event);
-      event.preventDefault();
-    });
-    const release = event => {
-      if (!dragging) return;
-      dragging = false;
-      svg.classList.remove('is-dragging');
-      try { svg.releasePointerCapture(event.pointerId); } catch (error) {}
-    };
-    svg.addEventListener('pointerup', release);
-    svg.addEventListener('pointercancel', release);
-  }
-
-  function bindDialRange() {
-    const range = $('#dialRange');
-    if (!range) return;
-    range.addEventListener('input', () => {
-      if (!state.run || state.run.type !== 'term') return;
-      state.run.watch.angle = mod360(Number(range.value));
-      updateDialView();
-    });
-  }
-
-  function updateDialView() {
-    const run = state.run;
-    if (!run || run.type !== 'term') return;
-    const term = TERM_BY_ID[run.targetId];
-    const angle = mod360(run.watch.angle);
-    const target = mod360(term.longitude);
-    const diff = angleDistance(angle, target);
-    const aligned = diff <= 4;
-    const text = $('#dialAngleText');
-    const range = $('#dialRange');
-    const alignment = $('#alignmentState');
-    const alignmentText = $('#alignmentText');
-    const dialWrap = $('#gamePanel .dial-wrap');
-    const wasAligned = Boolean(alignment?.classList.contains('is-aligned'));
-    if (text) text.textContent = `${Math.round(angle)}°`;
-    if (range) range.value = Math.round(angle);
-    if (alignment) alignment.classList.toggle('is-aligned', aligned);
-    if (dialWrap) dialWrap.classList.toggle('is-aligned', aligned);
-    if (alignmentText) alignmentText.textContent = aligned ? '光点已进入目标环 · 可以锁定' : `再转 ${Math.round(diff)}°`;
-    if (aligned && !wasAligned) playSound('align');
-    const needle = $('#gamePanel .dial-svg g[transform]');
-    if (needle) needle.setAttribute('transform', `rotate(${angle} 210 210)`);
-    const lock = $('[data-action="lock-dial"]');
-    if (lock && !run.watch.locked) lock.disabled = !aligned;
-  }
-
-  function adjustDial(delta) {
-    if (!state.run || state.run.type !== 'term') return;
-    state.run.watch.angle = mod360(state.run.watch.angle + delta);
-    updateDialView();
-    playSound('tick');
-  }
-
-  function lockDial() {
-    const run = state.run;
-    if (!run || run.type !== 'term') return;
-    const term = TERM_BY_ID[run.targetId];
-    if (angleDistance(run.watch.angle, term.longitude) > 4) {
-      showToast('指针还没有进入目标刻度。');
-      return;
-    }
-    run.watch.locked = true;
-    playSound('lock');
-    renderWatchPhase(run, term);
-  }
-
-  function useDialHint() {
-    const run = state.run;
-    if (!run || run.type !== 'term' || run.watch.hintShown) return;
-    run.watch.hintShown = true;
-    run.hints += 1;
-    run.precision = Math.max(40, run.precision - 5);
-    checkpointRun(run);
-    updateGameHud(run);
-    playSound('hint');
-    renderWatchPhase(run, TERM_BY_ID[run.targetId]);
-  }
-
-  function chooseTerm(termId) {
-    const run = state.run;
-    if (!run || run.type !== 'term' || !run.watch.locked) return;
-    const term = TERM_BY_ID[run.targetId];
-    if (termId === term.id) {
-      awardPhase(run, `${term.name}黄经节点已识别`, `${term.watch.cue} 与 ${term.watch.detail} 相互印证，观天段完成。`);
-      return;
-    }
-    const chosen = TERM_BY_ID[termId];
-    registerError(run);
-    run.watch.message = `“${chosen.name}”不是这个黄经节点。再核对目标刻度与节气顺序。`;
-    renderWatchPhase(run, term);
-  }
-
-  function renderPentadPhase(run, term) {
-    const pentad = run.pentad;
-    const ordering = pentad.stage === 'order';
-    const stepMarkup = `
-      <div class="pentad-step">
-        <span class="${ordering ? 'is-done' : 'is-current'}">${ordering ? '✓' : '1'}</span><b>找出三候</b>
-        <i></i>
-        <span class="${ordering ? 'is-current' : ''}">2</span><b>排出候序</b>
-      </div>
-    `;
-    let board = '';
-    if (!ordering) {
-      board = `
-        <div class="pentad-board pentad-board--game">
-          ${pentad.options.map((option, index) => {
-            const selected = pentad.selection.includes(option.key);
-            return `<button class="pentad-card pentad-card--tile ${selected ? 'is-selected' : ''}" data-pentad="${option.key}" aria-pressed="${selected}" aria-label="${option.name}，${option.note}" title="${option.note}">
-              <span class="pentad-card__glyph" aria-hidden="true">${pentadSymbol(option.name)}</span>
-              <span class="pentad-card__tag">物候牌 ${String(index + 1).padStart(2, '0')}</span>
-              <strong>${option.name}</strong>
-              <p>${shortText(option.note, 16)}</p>
-              <span class="pentad-card__check">✓</span>
-            </button>`;
-          }).join('')}
-        </div>
-      `;
-    } else {
-      board = `
-        <div class="order-board">
-          <div class="order-tray">
-            ${[0,1,2].map(index => {
-              const key = pentad.ordered[index];
-              const item = key ? pentad.orderPool.find(card => card.key === key) : null;
-              return `<div class="order-slot ${item ? 'is-filled' : ''}"><span class="order-slot__label">${['初候','二候','三候'][index]}</span>${item ? `<span class="order-slot__glyph">${pentadSymbol(item.name)}</span><strong>${item.name}</strong>` : '<span class="chain-slot__empty">空位</span>'}</div>`;
-            }).join('')}
-          </div>
-          <div class="order-card-pool">
-            ${pentad.orderPool.map(card => `<button class="order-card" data-order-pick="${card.key}" ${pentad.ordered.includes(card.key) ? 'disabled' : ''}><span class="order-card__glyph">${pentadSymbol(card.name)}</span><span><strong>${card.name}</strong><small>点击放入下一格</small></span></button>`).join('')}
-          </div>
-        </div>
-      `;
-    }
-    $('#gamePanel').innerHTML = `
-      <div class="stage-head stage-head--compact">
-        <div>
-          <div class="stage-kicker">PHASE 02 · READ THE LAND</div>
-          <h3>${ordering ? '排出三候' : '挑出三候'}</h3>
-          <p>${ordering ? '按初候 → 二候 → 三候放入。' : '六张候牌里，只有三张属于本节气。'}</p>
-        </div>
-        <div class="stage-objective"><strong>候牌</strong>${ordering ? `${pentad.ordered.length} / 3 已就位` : `${pentad.selection.length} / 3 已选择`}</div>
-      </div>
-      ${stepMarkup}
-      <div class="micro-brief">
-        <span class="micro-brief__glyph">候</span>
-        <div><strong>${ordering ? '读取候的先后' : '辨认物候的时令'}</strong><small>古代物候记录 · 轻点牌面进行操作</small></div>
-        <div class="selection-pips" aria-hidden="true">${[0,1,2].map(i => `<i class="${(ordering ? pentad.ordered.length : pentad.selection.length) > i ? 'is-filled' : ''}"></i>`).join('')}</div>
-      </div>
-      ${board}
-      ${feedbackMarkup(pentad.message)}
-      <div class="phase-actions">
-        <span class="phase-actions__note">${ordering ? '排错可重来，连击会中断。' : '选错会失去一次连击。'}</span>
-        ${ordering ? '<button class="btn btn--quiet btn--small" data-action="reset-order">重排</button>' : ''}
-        <button class="btn btn--primary" data-action="${ordering ? 'submit-order' : 'submit-pentads'}" ${ordering ? (pentad.ordered.length === 3 ? '' : 'disabled') : (pentad.selection.length === 3 ? '' : 'disabled')}>${ordering ? '接通候序' : '确认三候'}</button>
-      </div>
-    `;
-  }
-  function togglePentad(key) {
-    const run = state.run;
-    if (!run || run.type !== 'term' || run.pentad.stage !== 'select') return;
-    const selected = run.pentad.selection;
-    const index = selected.indexOf(key);
-    if (index >= 0) selected.splice(index, 1);
-    else if (selected.length < 3) selected.push(key);
-    else showToast('一段观察槽只能放入三枚候牌。');
-    run.pentad.message = '';
-    playSound('tick');
-    renderPentadPhase(run, TERM_BY_ID[run.targetId]);
-  }
-
-  function submitPentadSelection() {
-    const run = state.run;
-    if (!run || run.type !== 'term' || run.pentad.stage !== 'select') return;
-    const term = TERM_BY_ID[run.targetId];
-    const chosen = run.pentad.selection
-      .map(key => run.pentad.options.find(option => option.key === key))
-      .filter(Boolean);
-    if (chosen.length !== 3) return;
-    if (chosen.every(option => option.correct)) {
-      run.pentad.stage = 'order';
-      run.pentad.orderPool = seededShuffle(chosen, `${term.id}-order-${run.pentad.attempts}`);
-      run.pentad.ordered = [];
-      run.pentad.message = '三枚时令候牌已辨明。现在按初候、二候、三候排序。';
-      playSound('correct');
-      renderPentadPhase(run, term);
-      return;
-    }
-    const wrongNames = chosen.filter(option => !option.correct).map(option => option.name);
-    run.pentad.attempts += 1;
-    run.pentad.selection = [];
-    run.pentad.message = `候牌“${wrongNames.join('、')}”不属于 ${term.name}。注意节气之间的物候传递，不要被相邻时令残影干扰。`;
-    registerError(run);
-    renderPentadPhase(run, term);
-  }
-
-  function pickOrderCard(key) {
-    const run = state.run;
-    if (!run || run.type !== 'term' || run.pentad.stage !== 'order') return;
-    if (run.pentad.ordered.includes(key) || run.pentad.ordered.length >= 3) return;
-    run.pentad.ordered.push(key);
-    run.pentad.message = '';
-    playSound('tick');
-    renderPentadPhase(run, TERM_BY_ID[run.targetId]);
-  }
-
-  function resetOrder() {
-    const run = state.run;
-    if (!run || run.type !== 'term') return;
-    run.pentad.ordered = [];
-    run.pentad.message = '';
-    renderPentadPhase(run, TERM_BY_ID[run.targetId]);
-  }
-
-  function submitOrder() {
-    const run = state.run;
-    if (!run || run.type !== 'term' || run.pentad.ordered.length !== 3) return;
-    const term = TERM_BY_ID[run.targetId];
-    const result = run.pentad.ordered.map(key => run.pentad.options.find(option => option.key === key));
-    const correct = result.every((option, index) => option && option.index === index);
-    if (!correct) {
-      run.pentad.attempts += 1;
-      run.pentad.ordered = [];
-      run.pentad.orderPool = seededShuffle(run.pentad.orderPool, `${term.id}-order-${run.pentad.attempts}`);
-      run.pentad.message = '三候顺序尚未对齐。请回想初候、二候、三候的递进关系，再试一次。';
-      registerError(run);
-      renderPentadPhase(run, term);
-      return;
-    }
-    term.pentads.forEach((pentad, index) => {
-      state.save.pentads[pentadKey(term.id, index)] = true;
-    });
-    persist();
-    awardPhase(run, `${term.name}三候已归档`, `${term.pentads.map(item => item.name).join(' · ')}。三枚候牌已收入物候档案。`);
-  }
-
-  function renderMythPhase(run, term) {
-    const myth = run.myth;
-    const selectedCount = myth.selected.length;
-    const tilt = selectedCount === 0 ? 0 : selectedCount === 1 ? -3 : 0;
-    $('#gamePanel').innerHTML = `
-      <div class="stage-head stage-head--compact">
-        <div>
-          <div class="stage-kicker">PHASE 03 · BREAK THE MYTH</div>
-          <h3>击碎误区</h3>
-          <p>挑出两条能拆穿它的证据。</p>
-        </div>
-        <div class="stage-objective"><strong>证据槽</strong>${selectedCount} / 2</div>
-      </div>
-      <div class="myth-layout">
-        <div class="claim-card">
-          <span class="claim-card__label">异常命题</span>
-          <blockquote>“${term.myth.claim}”</blockquote>
-          <div class="balance-visual">
-            <div class="balance-beam" style="--tilt:${tilt}deg"><span class="balance-pan balance-pan--left"></span><span class="balance-pan balance-pan--right"></span></div>
-            <div class="balance-base"></div>
-            <div class="balance-caption">${selectedCount === 0 ? '等待证据' : selectedCount === 1 ? '天平仍在倾斜' : '双证据已就位'}</div>
-          </div>
-          <div class="evidence-slots" aria-hidden="true">
-            ${[0,1].map(i => `<span class="evidence-slot ${selectedCount > i ? 'is-filled' : ''}">${selectedCount > i ? '证' : '?'}</span>`).join('')}
-          </div>
-        </div>
-        <div class="evidence-area">
-          <div class="evidence-head"><h4>辨析材料</h4><span class="evidence-count">选中 2 条</span></div>
-          <div class="evidence-grid evidence-grid--tokens">
-            ${myth.options.map((option, index) => {
-              const selected = myth.selected.includes(index);
-              return `<button class="evidence-card evidence-token ${selected ? 'is-selected' : ''}" data-evidence="${index}" aria-pressed="${selected}" title="${option.text}">
-                <span class="evidence-token__glyph" aria-hidden="true">${evidenceSymbol(option.text)}</span>
-                <span class="evidence-token__copy"><small>材料 ${String(index + 1).padStart(2, '0')}</small><p>${shortText(option.text, 20)}</p></span>
-                <span class="evidence-card__mark">◆</span>
-              </button>`;
-            }).join('')}
-          </div>
-          ${feedbackMarkup(myth.message)}
-          <div class="phase-actions">
-            <span class="phase-actions__note">选择错误会中断连击。</span>
-            <button class="btn btn--primary" data-action="submit-evidence" ${selectedCount === 2 ? '' : 'disabled'}>${myth.attempts > 0 ? '再次校准' : '落下审判'}</button>
-          </div>
-        </div>
-      </div>
-    `;
-  }
-  function toggleEvidence(index) {
-    const run = state.run;
-    if (!run || run.type !== 'term') return;
-    const myth = run.myth;
-    const at = myth.selected.indexOf(index);
-    if (at >= 0) myth.selected.splice(at, 1);
-    else if (myth.selected.length < 2) myth.selected.push(index);
-    else showToast('天平只有两个证据槽。先移除一条已选证据。');
-    myth.message = '';
-    playSound('tick');
-    renderMythPhase(run, TERM_BY_ID[run.targetId]);
-  }
-
-  function recordMistake(term, run) {
-    const selected = run.myth.selected.map(index => run.myth.options[index]).filter(Boolean);
-    const existing = state.save.mistakes.find(item => item.termId === term.id);
-    const entry = {
-      termId: term.id,
-      termName: term.name,
-      season: term.season,
-      claim: term.myth.claim,
-      truth: term.myth.truth,
-      selected: selected.map(item => item.text),
-      attempts: (existing?.attempts || 0) + 1,
-      resolved: false,
-      updatedAt: new Date().toISOString()
-    };
-    if (existing) Object.assign(existing, entry);
-    else state.save.mistakes.push(entry);
-    persist();
-  }
-
-  function resolveMistake(termId) {
-    const existing = state.save.mistakes.find(item => item.termId === termId);
-    if (existing) {
-      existing.resolved = true;
-      existing.resolvedAt = new Date().toISOString();
-      persist();
-    }
-  }
-
-  function submitEvidence() {
-    const run = state.run;
-    if (!run || run.type !== 'term' || run.myth.selected.length !== 2) return;
-    const term = TERM_BY_ID[run.targetId];
-    const selected = run.myth.selected.map(index => run.myth.options[index]).filter(Boolean);
-    if (selected.every(option => option.ok)) {
-      run.myth.attempts += 1;
-      resolveMistake(term.id);
-      awardPhase(run, `${term.name}误区已辨明`, term.myth.truth);
-      return;
-    }
-    run.myth.attempts += 1;
-    recordMistake(term, run);
-    registerError(run);
-    run.myth.message = run.myth.attempts >= 3
-      ? `证据链仍有偏差。科学解释：${term.myth.truth}`
-      : '证据天平仍不平衡。至少有一条材料混淆了节气节点、实际天气或古代记录的性质。';
-    renderMythPhase(run, term);
-  }
-
-  function renderChainPhase(run, term) {
-    const chain = run.chain;
-    const placed = chain.placed;
-    const slotNames = ['日位', '传导', '响应', '显候'];
-    $('#gamePanel').innerHTML = `
-      <div class="stage-head stage-head--compact">
-        <div>
-          <div class="stage-kicker">PHASE 04 · REPAIR</div>
-          <h3>接通时轮</h3>
-          <p>把事件牌拖入正确刻度，让能量流到物候。</p>
-        </div>
-        <div class="stage-objective"><strong>回路</strong>${placed.length} / 4 已接通</div>
-      </div>
-      <div class="chain-board">
-        ${[0,1,2,3].map(index => {
-          const item = placed[index] !== undefined ? chain.pool.find(card => card.index === placed[index]) : null;
-          return `<div class="chain-slot ${item ? 'is-filled' : ''}" data-chain-slot="${index}" aria-label="第${index + 1}段 ${slotNames[index]}">
-            <div class="chain-slot__head"><span class="chain-slot__num">0${index + 1}</span><small>${slotNames[index]}</small></div>
-            ${item ? `<span class="chain-slot__glyph" aria-hidden="true">${chainSymbol(item.text)}</span><p>${shortText(item.text, 24)}</p>` : '<span class="chain-slot__empty">拖入事件牌</span>'}
-          </div>`;
-        }).join('')}
-      </div>
-      <div class="micro-brief micro-brief--chain">
-        <span class="micro-brief__glyph">流</span>
-        <div><strong>能量从太阳出发</strong><small>拖动牌面入槽，或用点击依次接通</small></div>
-      </div>
-      <div class="chain-pool">
-        ${chain.pool.map(card => `<button class="chain-card" data-chain-pick="${card.index}" data-chain-drag="${card.index}" draggable="true" ${placed.includes(card.index) ? 'disabled' : ''}><span class="chain-card__glyph" aria-hidden="true">${chainSymbol(card.text)}</span><span title="${card.text}">${shortText(card.text, 28)}</span></button>`).join('')}
-      </div>
-      ${feedbackMarkup(chain.message)}
-      <div class="phase-actions">
-        <span class="phase-actions__note">${placed.length === 4 ? '回路已填满，等待启动。' : '先接太阳，再让能量传向物候。'}</span>
-        <button class="btn btn--quiet btn--small" data-action="reset-chain" ${placed.length ? '' : 'disabled'}>清空</button>
-        <button class="btn btn--primary" data-action="submit-chain" ${placed.length === 4 ? '' : 'disabled'}>启动时轮</button>
-      </div>
-    `;
-    bindChainDrag();
-  }
-
-  function bindChainDrag() {
-    const run = state.run;
-    if (!run || run.type !== 'term') return;
-    $$('#gamePanel [data-chain-drag]').forEach(card => {
-      card.addEventListener('dragstart', event => {
-        event.dataTransfer.setData('text/plain', card.dataset.chainDrag);
-        event.dataTransfer.effectAllowed = 'move';
-        card.classList.add('is-dragging');
-      });
-      card.addEventListener('dragend', () => card.classList.remove('is-dragging'));
-    });
-    $$('#gamePanel [data-chain-slot]').forEach(slot => {
-      slot.addEventListener('dragover', event => {
-        event.preventDefault();
-        event.dataTransfer.dropEffect = 'move';
-        slot.classList.add('is-drop-target');
-      });
-      slot.addEventListener('dragleave', () => slot.classList.remove('is-drop-target'));
-      slot.addEventListener('drop', event => {
-        event.preventDefault();
-        slot.classList.remove('is-drop-target');
-        const index = Number(event.dataTransfer.getData('text/plain'));
-        if (Number.isFinite(index)) placeChainCard(index, Number(slot.dataset.chainSlot));
-      });
-    });
-  }
-  function placeChainCard(index, slotIndex) {
-    const run = state.run;
-    if (!run || run.type !== 'term') return;
-    if (run.chain.placed.includes(index) || run.chain.placed.length >= 4) return;
-    const insertion = Math.max(0, Math.min(Number(slotIndex) || 0, run.chain.placed.length));
-    run.chain.placed.splice(insertion, 0, index);
-    run.chain.message = '';
-    playSound('tick');
-    renderChainPhase(run, TERM_BY_ID[run.targetId]);
-  }
-
-  function pickChainCard(index) {
-    const run = state.run;
-    if (!run || run.type !== 'term') return;
-    placeChainCard(index, run.chain.placed.length);
-  }
-
-  function resetChain() {
-    const run = state.run;
-    if (!run || run.type !== 'term') return;
-    run.chain.placed = [];
-    run.chain.message = '';
-    renderChainPhase(run, TERM_BY_ID[run.targetId]);
-  }
-
-  function submitChain() {
-    const run = state.run;
-    if (!run || run.type !== 'term' || run.chain.placed.length !== 4) return;
-    const term = TERM_BY_ID[run.targetId];
-    const correct = run.chain.placed.every((value, index) => value === index);
-    if (!correct) {
-      registerError(run);
-      run.chain.placed = [];
-      run.chain.message = '因果链没有闭合。先确定太阳位置，再判断直射点、昼夜与地表热量的变化，最后才落到物候。';
-      renderChainPhase(run, term);
-      return;
-    }
-    awardPhase(run, `${term.name}时轮已修复`, term.chain.join(' → '));
-  }
-
-  function renderTrialPhase(run, trial, phaseIndex) {
-    if (phaseIndex === 0) renderTrialOrder(run, trial);
-    else if (phaseIndex === 1) renderTrialMatch(run, trial);
-    else renderTrialTruth(run, trial);
-  }
-
-  function trialBadge(run) {
-    return `<div class="trial-round-badge">${TRIAL_PHASES.map((phase, index) => `<span class="${index < run.phase ? 'is-done' : index === run.phase ? 'is-active' : ''}">${index + 1}</span><b style="font-weight:400;font-size:9px">${phase.name}</b>`).join('')}</div>`;
-  }
-
-  function renderTrialOrder(run, trial) {
-    const picked = run.trial.orderPicks;
-    const meta = DATA.seasons[run.season];
-    $('#gamePanel').innerHTML = `
-      <div class="stage-head">
-        <div>
-          <div class="stage-kicker">TRIAL 01 · SEASONAL ORBIT</div>
-          <h3>重连${meta.name}季星序</h3>
-          <p>按黄经顺序，把六枚节气印接回星轨。</p>
-        </div>
-        <div class="stage-objective"><strong>试炼目标</strong>按顺序点击 6 枚节气印</div>
-      </div>
-      <div class="trial-brief">
-        <div><h4>${trial.name}</h4><p>${trial.subtitle} · 综合检验本章天文、物候与文化。</p></div>
-        ${trialBadge(run)}
-      </div>
-      <div class="instruction-card instruction-card--accent"><span class="instruction-card__label">星轨规则</span><p>第一枚应为本季第一节气。点击错误会扣除精度并重置连击；已接入的节气不会掉落。</p></div>
-      <div class="order-term-grid">
-        ${run.trial.orderOptions.map(term => {
-          const index = picked.indexOf(term.id);
-          return `<button class="order-term-card ${index >= 0 ? 'is-picked' : ''}" data-trial-order="${term.id}" data-step="${index + 1}" ${index >= 0 ? 'disabled' : ''}><strong>${term.name}</strong><small>${index >= 0 ? `第 ${index + 1} 位` : '点击接入星轨'}</small></button>`;
-        }).join('')}
-      </div>
-      ${feedbackMarkup(run.trial.message)}
-      <div class="phase-actions"><span class="phase-actions__note">已接入 ${picked.length} / 6</span><span class="tag tag--season">当前应接第 ${picked.length + 1} 个节点</span></div>
-    `;
-  }
-
-  function pickTrialOrder(termId) {
-    const run = state.run;
-    if (!run || run.type !== 'trial' || run.phase !== 0) return;
-    const trial = currentTarget(run);
-    if (run.trial.orderPicks.includes(termId)) return;
-    const expected = trial.order[run.trial.orderPicks.length];
-    if (termId !== expected) {
-      const expectedTerm = TERM_BY_ID[expected];
-      run.trial.message = `星轨顺序不对。当前应接入的是黄经更小的下一节点（方位提示：${expectedTerm.season === 'spring' ? '春' : expectedTerm.season === 'summer' ? '夏' : expectedTerm.season === 'autumn' ? '秋' : '冬'}季段）。`;
-      registerError(run);
-      renderTrialOrder(run, trial);
-      return;
-    }
-    run.trial.orderPicks.push(termId);
-    run.trial.message = '';
-    playSound('tick');
-    if (run.trial.orderPicks.length === 6) {
-      awardPhase(run, '章节气星序已接通', `${trial.order.map(id => TERM_BY_ID[id].name).join(' → ')}。`);
-    } else {
-      renderTrialOrder(run, trial);
-    }
-  }
-
-  function renderTrialMatch(run, trial) {
-    const matched = run.trial.matched;
-    const active = trial.match.find(pair => !matched[pair.termId]);
-    const usedPentads = Object.values(matched).filter(Boolean);
-    $('#gamePanel').innerHTML = `
-      <div class="stage-head">
-        <div>
-          <div class="stage-kicker">TRIAL 02 · PHENOLOGY TRACE</div>
-          <h3>让候牌归位</h3>
-          <p>为三个高亮节点各找一枚对应候牌。</p>
-        </div>
-        <div class="stage-objective"><strong>试炼目标</strong>完成 3 组候牌配对</div>
-      </div>
-      <div class="trial-brief">
-        <div><h4>${trial.name}</h4><p>候牌中混入了章外时令残影，需要跨节点辨认。</p></div>
-        ${trialBadge(run)}
-      </div>
-      <div class="match-layout">
-        <div class="match-targets">
-          ${trial.match.map(pair => {
-            const term = TERM_BY_ID[pair.termId];
-            const done = Boolean(matched[pair.termId]);
-            return `<div class="match-target ${active?.termId === pair.termId ? 'is-active' : ''} ${done ? 'is-filled' : ''}">
-              <span class="match-target__char">${term.glyph}</span>
-              <span><strong>${term.name}</strong><small>${done ? '候牌已归位' : active?.termId === pair.termId ? '当前校准节点' : '等待校准'}</small></span>
-              <span class="match-target__result">${done ? matched[pair.termId] : ''}</span>
-            </div>`;
-          }).join('')}
-        </div>
-        <div class="match-pentad-grid">
-          ${run.trial.matchOptions.map(option => {
-            const used = usedPentads.includes(option.pentad);
-            return `<button class="match-pentad" data-trial-pentad="${option.key}" ${used ? 'disabled' : ''}><strong>${option.pentad}</strong><small>${used ? '已归位' : '点击放入当前节点'}</small></button>`;
-          }).join('')}
-        </div>
-      </div>
-      ${feedbackMarkup(run.trial.message)}
-      <div class="phase-actions"><span class="phase-actions__note">${Object.keys(matched).length} / 3 组已配对</span><span class="tag tag--season">${active ? `当前节点：${TERM_BY_ID[active.termId].name}` : '全部候牌已归位'}</span></div>
-    `;
-  }
-
-  function pickTrialPentad(key) {
-    const run = state.run;
-    if (!run || run.type !== 'trial' || run.phase !== 1) return;
-    const trial = currentTarget(run);
-    const option = run.trial.matchOptions.find(item => item.key === key);
-    if (!option) return;
-    const active = trial.match.find(pair => !run.trial.matched[pair.termId]);
-    if (!active) return;
-    if (option.termId !== active.termId) {
-      run.trial.message = `“${option.pentad}”不属于当前的 ${TERM_BY_ID[active.termId].name} 节点。重新阅读候名中的物候线索。`;
-      registerError(run);
-      renderTrialMatch(run, trial);
-      return;
-    }
-    run.trial.matched[active.termId] = option.pentad;
-    run.trial.message = '';
-    playSound('correct');
-    if (Object.keys(run.trial.matched).length === trial.match.length) {
-      awardPhase(run, '本章候证已复原', `${trial.match.map(pair => `${TERM_BY_ID[pair.termId].name} · ${pair.pentad}`).join('；')}。`);
-    } else {
-      renderTrialMatch(run, trial);
-    }
-  }
-
-  function renderTrialTruth(run, trial) {
-    const selected = run.trial.statementSelection;
-    $('#gamePanel').innerHTML = `
-      <div class="stage-head">
-        <div>
-          <div class="stage-kicker">TRIAL 03 · SCIENTIFIC REVIEW</div>
-          <h3>审校万象记录</h3>
-          <p>五条陈述中只有三条可靠，请全部找出。</p>
-        </div>
-        <div class="stage-objective"><strong>试炼目标</strong>找出 3 条可靠陈述</div>
-      </div>
-      <div class="trial-brief">
-        <div><h4>${trial.name}</h4><p>综合检验天文机制、七十二候性质与常见误区。</p></div>
-        ${trialBadge(run)}
-      </div>
-      <div class="statement-grid">
-        ${trial.statements.map((statement, index) => `<button class="statement-card ${selected.includes(index) ? 'is-selected' : ''}" data-trial-statement="${index}" aria-pressed="${selected.includes(index)}">${statement.text}</button>`).join('')}
-      </div>
-      ${feedbackMarkup(run.trial.message)}
-      <div class="phase-actions">
-        <span class="phase-actions__note">已选 ${selected.length} / 3</span>
-        <button class="btn btn--primary" data-action="submit-trial-truth" ${selected.length === 3 ? '' : 'disabled'}>提交最终审校</button>
-      </div>
-    `;
-  }
-
-  function toggleTrialStatement(index) {
-    const run = state.run;
-    if (!run || run.type !== 'trial' || run.phase !== 2) return;
-    const selected = run.trial.statementSelection;
-    const at = selected.indexOf(index);
-    if (at >= 0) selected.splice(at, 1);
-    else if (selected.length < 3) selected.push(index);
-    else showToast('请先移除一条已选陈述。');
-    run.trial.message = '';
-    playSound('tick');
-    renderTrialTruth(run, currentTarget(run));
-  }
-
-  function submitTrialTruth() {
-    const run = state.run;
-    if (!run || run.type !== 'trial' || run.trial.statementSelection.length !== 3) return;
-    const trial = currentTarget(run);
-    const selected = run.trial.statementSelection.map(index => trial.statements[index]);
-    if (selected.every(statement => statement.ok)) {
-      awardPhase(run, '章末审校已通过', '天文机制、物候记录和科学解释之间的边界已经厘清，本章试炼完成。');
-      return;
-    }
-    run.trial.statementSelection = [];
-    run.trial.message = '审校未通过。至少有一条陈述把节气节点、实际天气或古代观察记录混为一谈。';
-    registerError(run);
-    renderTrialTruth(run, trial);
-  }
-
-  function scoreToStars(score) {
-    if (score >= 900) return 3;
-    if (score >= 760) return 2;
-    return 1;
-  }
-
-  function finishRun(run) {
-    const target = currentTarget(run);
-    const stars = scoreToStars(run.score);
-    if (run.type === 'term') {
-      const previous = state.save.levels[target.id] || {};
-      state.save.levels[target.id] = {
-        completed: true,
-        bestScore: Math.max(Number(previous.bestScore) || 0, run.score),
-        stars: Math.max(Number(previous.stars) || 0, stars),
-        bestCombo: Math.max(Number(previous.bestCombo) || 0, run.bestCombo),
-        attempts: (Number(previous.attempts) || 0) + 1,
-        completedAt: previous.completedAt || new Date().toISOString(),
-        lastPlayedAt: new Date().toISOString()
-      };
-    } else {
-      const previous = state.save.trials[target.id] || {};
-      state.save.trials[target.id] = {
-        completed: true,
-        bestScore: Math.max(Number(previous.bestScore) || 0, run.score),
-        stars: Math.max(Number(previous.stars) || 0, stars),
-        bestCombo: Math.max(Number(previous.bestCombo) || 0, run.bestCombo),
-        attempts: (Number(previous.attempts) || 0) + 1,
-        completedAt: previous.completedAt || new Date().toISOString(),
-        lastPlayedAt: new Date().toISOString()
-      };
-    }
-    state.save.lastRun = null;
-    persist();
-    playSound('complete');
-    renderMap();
-    showResult(run, target, stars);
-  }
-
-  function showResult(run, target, stars) {
-    const allDone = completedTermCount() === 24;
-    const isTrial = run.type === 'trial';
-    $('#resultSeal').textContent = isTrial ? '印' : target.glyph;
-    $('#resultTitle').textContent = isTrial ? `${target.name}已完成` : `${target.name}时轮已归位`;
-    $('#resultStars').innerHTML = starText(stars);
-    $('#resultStars').setAttribute('aria-label', `${stars} 星`);
-    $('#resultScore').textContent = `${run.score} 时轮分 · 最高连击 ×${run.bestCombo}`;
-    $('#resultCopy').textContent = isTrial
-      ? `${target.subtitle}。你已完成星序、候证与万象审校，章末印记已写入存档。`
-      : `${target.summary} ${target.culture}`;
-    $('#resultCollect').innerHTML = isTrial
-      ? `本章试炼印记 ${stars} 星 · 全章知识完成一次综合校准`
-      : `已收录：${target.pentads.map(item => item.name).join(' · ')}<br>物候档案 ${pentadCount()} / 72 · 主线 ${completedTermCount()} / 24`;
-    const next = TERMS[target.order + 1];
-    const canNext = !isTrial && next && termUnlocked(next);
-    const actions = [
-      `<button class="btn btn--ghost" data-result-action="map">返回星图</button>`,
-      `<button class="btn btn--ghost" data-result-action="retry">${isTrial ? '重试试炼' : '再次校准'}</button>`
-    ];
-    if (canNext) actions.push(`<button class="btn btn--primary" data-result-action="next" data-next-id="${next.id}">下一节点 · ${next.name}</button>`);
-    if (allDone) actions.push(`<button class="btn btn--primary" data-result-action="card">查看时间行旅</button>`);
-    $('#resultActions').innerHTML = actions.join('');
-    $('#resultOverlay').classList.add('is-open');
-    $('#resultOverlay').setAttribute('aria-hidden', 'false');
-    setTimeout(() => $('#resultActions .btn--primary, #resultActions .btn')?.focus(), 50);
-  }
-
-  function closeResult() {
-    $('#resultOverlay').classList.remove('is-open');
-    $('#resultOverlay').setAttribute('aria-hidden', 'true');
-    showScreen('map');
-  }
-
-  function handleResultAction(action, button) {
-    const run = state.run;
-    if (action === 'map') {
-      closeResult();
-    } else if (action === 'retry') {
-      closeResult();
-      if (run?.type === 'trial') startTrial(run.targetId);
-      else if (run) startTerm(run.targetId);
-    } else if (action === 'next') {
-      const nextId = button.dataset.nextId;
-      closeResult();
-      startTerm(nextId);
-    } else if (action === 'card') {
-      closeResult();
-      if (completedTermCount() === 24) showScreen('card');
-      else showToast('完成 24 个节气节点后，时间行旅卡才会完全展开。');
-    }
-  }
-
-  function renderCodex() {
-    const filters = [
-      ['all', '全部'], ['spring', '春'], ['summer', '夏'], ['autumn', '秋'], ['winter', '冬'], ['collected', '已收录']
-    ];
-    $('#codexCount').innerHTML = `<strong>${pentadCount()}</strong><span> / 72</span>`;
-    $('#codexToolbar').innerHTML = filters.map(([key, label]) => {
-      const disabled = key === 'collected' && pentadCount() === 0;
-      return `<button class="filter-btn ${state.codexFilter === key ? 'is-active' : ''}" data-filter="${key}" ${disabled ? 'disabled' : ''}>${label}</button>`;
-    }).join('');
-    $('#codexIntro').innerHTML = '<strong>记录边界：</strong>候名与候应属于传统物候观察体系。卡片中的“古人记录”与现代科学解释分开呈现，不把传统物候直接当作现代气象或生物学标准。';
-    let cards = [];
-    TERMS.forEach(term => {
-      term.pentads.forEach((pentad, index) => {
-        const key = pentadKey(term.id, index);
-        const collected = Boolean(state.save.pentads[key]);
-        if (state.codexFilter === 'collected' && !collected) return;
-        if (SEASON_ORDER.includes(state.codexFilter) && term.season !== state.codexFilter) return;
-        const meta = DATA.seasons[term.season];
-        const flatIndex = term.order * 3 + index + 1;
-        cards.push(`
-          <article class="codex-card ${collected ? '' : 'is-locked'}" data-index="${String(flatIndex).padStart(2, '0')}" style="--card-season:${meta.color}">
-            <div class="codex-card__meta"><span class="codex-card__season">${meta.name} · ${term.name}</span><span class="codex-card__state">${collected ? `第${index + 1}候` : '未收录'}</span></div>
-            <h3>${collected ? pentad.name : '未收录候牌'}</h3>
-            <div class="codex-card__term">${collected ? `黄经 ${(term.longitude + 360) % 360}° · ${term.dateHint}` : '完成识候段后显现'}</div>
-            <p>${collected ? pentad.note : '在对应节气关卡中完成三候辨识与排序，这张候牌会收入档案。'}</p>
-            ${collected ? '' : '<span class="codex-card__lock"><svg viewBox="0 0 24 24"><rect x="5" y="10" width="14" height="10" rx="2"/><path d="M8 10V7a4 4 0 018 0v3"/></svg> 待观测</span>'}
-          </article>
-        `);
-      });
-    });
-    $('#codexGrid').innerHTML = cards.length
-      ? cards.join('')
-      : '<div class="codex-empty"><strong>还没有候牌</strong>进入任一节气关卡，在“识候”段完成三候辨认。</div>';
-  }
-
-  function renderReview() {
-    const mistakes = state.save.mistakes.slice().sort((a, b) => String(b.updatedAt).localeCompare(String(a.updatedAt)));
-    const unresolved = mistakes.filter(item => !item.resolved).length;
-    const resolved = mistakes.length - unresolved;
-    $('#clearReviewBtn').disabled = mistakes.length === 0;
-    $('#reviewSummary').innerHTML = `
-      <div class="review-stat"><span>已记录辨析</span><strong>${mistakes.length}</strong></div>
-      <div class="review-stat"><span>仍待重看</span><strong>${unresolved}</strong></div>
-      <div class="review-stat"><span>已经校正</span><strong>${resolved}</strong></div>
-      <div class="review-stat"><span>复盘边界</span><strong>古今分层</strong></div>
-    `;
-    if (!mistakes.length) {
-      $('#reviewList').innerHTML = '<div class="review-empty"><strong>证据回廊尚空</strong>在“辨误”段选错证据后，这里会保留命题、你的选择与科学解释。</div>';
-      return;
-    }
-    $('#reviewList').innerHTML = mistakes.map(item => {
-      const term = TERM_BY_ID[item.termId];
-      const meta = DATA.seasons[item.season];
-      return `<article class="review-card ${item.resolved ? 'is-resolved' : ''}">
-        <div class="review-card__term" style="color:${meta.color}">${item.termName}<small>${meta.name}章 · 辨析记录</small></div>
-        <div class="review-card__body">
-          <h4>“${item.claim}”</h4>
-          <p><strong>科学解释：</strong>${item.truth}</p>
-          <p><strong>当时所选：</strong>${item.selected.length ? item.selected.join('；') : '未记录'}</p>
-          <p><strong>复盘动作：</strong>区分天文节点、实际天气、古代物候观察与现代生活建议。</p>
-        </div>
-        <div>
-          <span class="review-card__status">${item.resolved ? '已校正' : '待重看'}</span>
-          ${term && termUnlocked(term) ? `<button class="btn btn--small btn--quiet" style="margin-top:10px" data-review-level="${term.id}">重看此关</button>` : ''}
-        </div>
-      </article>`;
+  function renderMenuSeasons() {
+    if (!els.menuSeasons) return;
+    els.menuSeasons.innerHTML = SEASON_ORDER.map(season => {
+      const item = DATA.seasons[season];
+      const unlocked = seasonUnlocked(season);
+      return `<button class="menu-season ${season === state.season ? 'is-current' : ''}" data-menu-season="${season}" style="--season-color:${item.color}" data-count="${completedCount(season)}/6" ${unlocked ? '' : 'disabled'}>
+        <strong>${item.name}</strong><small>${unlocked ? `${completedCount(season)} / 6 节气碑` : '完成上一季解锁'}</small>
+      </button>`;
     }).join('');
   }
 
-  function openModal(content, focusSelector = '') {
-    state.modalReturnFocus = document.activeElement;
-    $('#modalContent').innerHTML = content;
-    $('#modal').classList.add('is-open');
-    $('#modal').setAttribute('aria-hidden', 'false');
-    setTimeout(() => {
-      const focusTarget = focusSelector ? $(focusSelector, $('#modal')) : $('#modal .modal__close');
-      focusTarget?.focus();
-    }, 40);
+  function updateSoundButton() {
+    const enabled = Boolean(state.save.sound);
+    els.soundBtn.classList.toggle('is-muted', !enabled);
+    els.soundBtn.setAttribute('aria-pressed', String(enabled));
+    els.soundBtn.setAttribute('aria-label', enabled ? '关闭声音' : '开启声音');
   }
 
-  function closeModal() {
-    $('#modal').classList.remove('is-open');
-    $('#modal').setAttribute('aria-hidden', 'true');
-    $('#modalContent').innerHTML = '';
-    state.modalReturnFocus?.focus?.();
-  }
-
-  function showHelp() {
-    openModal(`
-      <p class="eyebrow"><span></span>观测员手册</p>
-      <h2>如何修复四季时钟</h2>
-      <p>每关包含四个连续阶段。每一阶段都有目标、操作、即时反馈与评分。错误会降低精度并打断连击，但不会把玩家挡在关卡外。</p>
-      <div class="help-steps">
-        <div class="help-step"><span>观</span><strong>校准黄经仪</strong><p>拖动滑杆、点击加减按钮或使用方向键，将指针对准目标刻度，再选择节气印。</p></div>
-        <div class="help-step"><span>候</span><strong>重排三候</strong><p>从混入其他节气的候牌中找出三枚正确物候，再按初候、二候、三候排序。</p></div>
-        <div class="help-step"><span>辨</span><strong>校准证据天平</strong><p>选择两条能解释命题为何是误区的证据；古代记录与现代解释需分开理解。</p></div>
-        <div class="help-step"><span>修</span><strong>接通因果链</strong><p>按太阳位置、直射与昼夜、地表响应、物候表现排列四张事件牌。</p></div>
-      </div>
-      <h3>评分与存档</h3>
-      <p>每段完成时按当前精度获得时轮分。单关满分 1000，900 分以上为三星。进度、最佳成绩、72 候图鉴与错题记录保存在当前浏览器的 localStorage 中。刷新后可从上次完成的阶段继续。</p>
-      <h3>科学说明</h3>
-      <p>前端太阳视黄经使用低阶近似算法，仅用于互动演示。正式交节时刻和历算应以中国科学院紫金山天文台等权威机构发布的历书为准。游戏中的农事、健康和生活内容不构成专业建议。</p>
-      <h3>资料分类</h3>
-      <ul>
-        ${DATA.sourceGroups.map(group => `<li><strong>${group.id} · ${group.label}：</strong>${group.note}</li>`).join('')}
-      </ul>
-      <div class="modal__actions">
-        <button class="btn btn--quiet btn--small" data-modal-action="reset">清除全部进度</button>
-        <button class="btn btn--primary btn--small" data-close-modal>继续观测</button>
-      </div>
-    `, '[data-close-modal]');
-  }
-
-  function showResetPrompt() {
-    openModal(`
-      <p class="eyebrow"><span></span>危险操作</p>
-      <h2>清除全部进度？</h2>
-      <p>这会删除 24 关成绩、72 候收集、章末试炼、错题记录与未完成的关卡状态，且无法撤销。浏览器中原有的《时间之书》项目数据不会被触碰。</p>
-      <div class="modal__actions">
-        <button class="btn btn--ghost btn--small" data-close-modal>保留进度</button>
-        <button class="btn btn--danger btn--small" data-modal-action="confirm-reset">确认清除</button>
-      </div>
-    `, '[data-modal-action="confirm-reset"]');
-  }
-
-  function showClearReviewPrompt() {
-    openModal(`
-      <p class="eyebrow"><span></span>证据回廊</p>
-      <h2>清空辨析记录？</h2>
-      <p>只会清除错题复盘记录；关卡星级、物候收集与章末试炼成绩不受影响。</p>
-      <div class="modal__actions">
-        <button class="btn btn--ghost btn--small" data-close-modal>取消</button>
-        <button class="btn btn--danger btn--small" data-modal-action="confirm-clear-review">清空记录</button>
-      </div>
-    `, '[data-modal-action="confirm-clear-review"]');
-  }
-
-  function resetAllProgress() {
-    try { localStorage.removeItem(SAVE_KEY); } catch (error) { console.warn(error); }
-    state.save = defaultSave();
-    state.run = null;
-    state.season = 'spring';
-    closeModal();
-    closeResult();
-    updateHome();
-    renderMap();
-    showScreen('map');
-    showToast('进度已清除，四季时钟重新开始运转。');
-  }
-
-  function clearReviewRecords() {
-    state.save.mistakes = [];
+  function enterWorld(season = state.season) {
+    if (!seasonUnlocked(season)) {
+      showToast('完成上一季的全部 6 个节气碑，才能前往下一季。');
+      return;
+    }
+    state.season = season;
+    state.mode = 'world';
+    const meta = DATA.seasons[season];
+    state.player = { x: meta.start.x, y: meta.start.y, facing: 'down', moving: false, step: 0 };
+    state.nearTerm = null;
+    state.save.currentSeason = season;
     persist();
-    closeModal();
-    renderReview();
-    showToast('辨析记录已清空。');
+    els.menu.hidden = true;
+    els.hud.hidden = false;
+    els.touchControls.hidden = !isTouchLike();
+    els.chapterOverlay.hidden = true;
+    els.finalOverlay.hidden = true;
+    renderHUD();
+    updateCamera(true);
+    showToast(`${meta.title} · ${meta.motto}`);
   }
 
-  function drawRoundRect(ctx, x, y, width, height, radius) {
-    const r = Math.min(radius, width / 2, height / 2);
+  function returnToMenu() {
+    state.mode = 'menu';
+    els.menu.hidden = false;
+    els.hud.hidden = true;
+    els.touchControls.hidden = true;
+    els.worldHelp.hidden = true;
+    els.prompt.hidden = true;
+    renderHUD();
+    els.continueBtn.hidden = Object.keys(state.save.stations).length === 0;
+    els.startBtn.textContent = Object.keys(state.save.stations).length ? '重新进入四季' : '开始行旅';
+  }
+
+  function switchSeason(season) {
+    if (!seasonUnlocked(season)) {
+      showToast('这一季还在雪雾后面。先完成上一季吧。');
+      return;
+    }
+    const meta = DATA.seasons[season];
+    state.season = season;
+    state.player = { x: meta.start.x, y: meta.start.y, facing: 'down', moving: false, step: 0 };
+    state.nearTerm = null;
+    state.save.currentSeason = season;
+    persist();
+    renderHUD();
+    updateCamera(true);
+    showToast(`${meta.title} · ${meta.weatherLabel}`);
+  }
+
+  function updateCamera(instant = false) {
+    const width = els.canvas.clientWidth;
+    const height = els.canvas.clientHeight;
+    const targetX = clamp(state.player.x - width / 2, 0, Math.max(0, WORLD.width - width));
+    const targetY = clamp(state.player.y - height / 2, 0, Math.max(0, WORLD.height - height));
+    if (instant) {
+      state.camera.x = targetX;
+      state.camera.y = targetY;
+    } else {
+      state.camera.x += (targetX - state.camera.x) * .12;
+      state.camera.y += (targetY - state.camera.y) * .12;
+    }
+  }
+
+  function currentMeta() {
+    return DATA.seasons[state.season];
+  }
+
+  function nearestTerm() {
+    let best = null;
+    let bestDistance = 130;
+    seasonTerms(state.season).forEach(term => {
+      const d = distance(state.player, term.position);
+      if (d < bestDistance) {
+        bestDistance = d;
+        best = term;
+      }
+    });
+    return best;
+  }
+
+  function interact() {
+    if (state.mode === 'mini') return miniAction();
+    if (state.mode !== 'world') return;
+    const term = nearestTerm();
+    if (!term) {
+      showToast('靠近一块发光的节气碑，再按 E 互动。');
+      return;
+    }
+    openMiniGame(term);
+  }
+
+  function roundedRect(ctx, x, y, w, h, radius) {
+    const r = Math.min(radius, w / 2, h / 2);
     ctx.beginPath();
     ctx.moveTo(x + r, y);
-    ctx.arcTo(x + width, y, x + width, y + height, r);
-    ctx.arcTo(x + width, y + height, x, y + height, r);
-    ctx.arcTo(x, y + height, x, y, r);
-    ctx.arcTo(x, y, x + width, y, r);
+    ctx.arcTo(x + w, y, x + w, y + h, r);
+    ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r);
+    ctx.arcTo(x, y, x + w, y, r);
     ctx.closePath();
   }
 
-  function renderTravelCard() {
-    if (completedTermCount() !== 24) {
-      showScreen('map');
-      showToast('完成 24 个节气节点后，才能生成完整的时间行旅卡。');
-      return;
-    }
-    const canvas = $('#travelCanvas');
-    const ctx = canvas.getContext('2d');
-    const width = canvas.width;
-    const height = canvas.height;
-    const stars = termStarsTotal();
-    const trialStars = Object.values(state.save.trials).reduce((sum, record) => sum + (Number(record.stars) || 0), 0);
-
-    const bg = ctx.createLinearGradient(0, 0, width, height);
-    bg.addColorStop(0, '#0d2231');
-    bg.addColorStop(.55, '#071520');
-    bg.addColorStop(1, '#102b36');
-    ctx.fillStyle = bg;
-    ctx.fillRect(0, 0, width, height);
-
-    const glow = ctx.createRadialGradient(540, 420, 30, 540, 420, 500);
-    glow.addColorStop(0, 'rgba(216,181,107,.17)');
-    glow.addColorStop(1, 'rgba(216,181,107,0)');
-    ctx.fillStyle = glow;
-    ctx.fillRect(0, 0, width, height);
-
-    const random = seededRandom(20261025);
-    for (let i = 0; i < 150; i += 1) {
-      const x = random() * width;
-      const y = random() * height;
-      const alpha = .05 + random() * .25;
-      ctx.fillStyle = `rgba(239,218,165,${alpha.toFixed(3)})`;
+  function drawFlower(ctx, x, y, size, color) {
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.fillStyle = color;
+    for (let i = 0; i < 5; i += 1) {
+      const angle = i / 5 * TAU;
       ctx.beginPath();
-      ctx.arc(x, y, random() * 1.6 + .35, 0, Math.PI * 2);
+      ctx.ellipse(Math.cos(angle) * size * .55, Math.sin(angle) * size * .55, size * .42, size * .24, angle, 0, TAU);
       ctx.fill();
     }
+    ctx.fillStyle = 'rgba(255,246,144,.95)';
+    ctx.beginPath();
+    ctx.arc(0, 0, size * .24, 0, TAU);
+    ctx.fill();
+    ctx.restore();
+  }
 
-    ctx.strokeStyle = 'rgba(216,181,107,.35)';
-    ctx.lineWidth = 2;
-    ctx.strokeRect(42, 42, width - 84, height - 84);
-    ctx.strokeStyle = 'rgba(216,181,107,.12)';
-    ctx.lineWidth = 1;
-    ctx.strokeRect(57, 57, width - 114, height - 114);
+  function drawTree(ctx, item, season) {
+    const x = item.x;
+    const y = item.y;
+    const scale = item.size;
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.fillStyle = 'rgba(51,74,45,.12)';
+    ctx.beginPath();
+    ctx.ellipse(0, 14 * scale, 48 * scale, 16 * scale, 0, 0, TAU);
+    ctx.fill();
+    if (season === 'winter') {
+      ctx.fillStyle = '#4f6e66';
+      ctx.fillRect(-5 * scale, -34 * scale, 10 * scale, 50 * scale);
+      const layers = [[0, -82, 55], [0, -58, 45], [0, -34, 34]];
+      layers.forEach(([lx, ly, r]) => {
+        ctx.fillStyle = '#4d8066';
+        ctx.beginPath();
+        ctx.moveTo(lx, ly - r * .7);
+        ctx.lineTo(lx - r, ly + r * .5);
+        ctx.lineTo(lx + r, ly + r * .5);
+        ctx.closePath();
+        ctx.fill();
+        ctx.fillStyle = 'rgba(255,255,255,.9)';
+        ctx.beginPath();
+        ctx.moveTo(lx, ly - r * .7);
+        ctx.lineTo(lx - r * .55, ly + r * .05);
+        ctx.lineTo(lx + r * .25, ly + r * .06);
+        ctx.closePath();
+        ctx.fill();
+      });
+    } else {
+      ctx.fillStyle = season === 'autumn' ? '#8b552e' : '#7b5a31';
+      ctx.fillRect(-7 * scale, -42 * scale, 14 * scale, 60 * scale);
+      const leafColors = season === 'spring'
+        ? ['#f7b1bf', '#f8d0d5', '#8dce74']
+        : season === 'summer'
+          ? ['#4eaa5b', '#6ec775', '#3d9652']
+          : ['#e58a35', '#d7642f', '#f2b643'];
+      leafColors.forEach((color, index) => {
+        ctx.fillStyle = color;
+        ctx.beginPath();
+        ctx.arc((index - 1) * 24 * scale, (-72 - index % 2 * 18) * scale, (38 - index * 4) * scale, 0, TAU);
+        ctx.fill();
+      });
+    }
+    ctx.restore();
+  }
 
+  function drawStation(ctx, term, near, time) {
+    const meta = DATA.seasons[term.season];
+    const record = stationRecord(term.id);
+    const completed = Boolean(record?.complete);
+    const pulse = near ? 1 + Math.sin(time * 5) * .06 : 1;
+    ctx.save();
+    ctx.translate(term.position.x, term.position.y);
+    ctx.scale(pulse, pulse);
+    ctx.fillStyle = 'rgba(51,74,45,.14)';
+    ctx.beginPath();
+    ctx.ellipse(0, 28, 64, 20, 0, 0, TAU);
+    ctx.fill();
+    if (near) {
+      ctx.strokeStyle = term.color;
+      ctx.lineWidth = 4;
+      ctx.beginPath();
+      ctx.arc(0, 0, 69 + Math.sin(time * 4) * 5, 0, TAU);
+      ctx.stroke();
+    }
+    ctx.fillStyle = completed ? term.color : 'rgba(255,253,244,.96)';
+    ctx.strokeStyle = completed ? '#fff' : term.color;
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.arc(0, 0, 55, 0, TAU);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = completed ? '#fff' : term.color;
+    ctx.font = '500 34px "Songti SC", "STSong", serif';
     ctx.textAlign = 'center';
-    ctx.fillStyle = '#d8b56b';
-    ctx.font = '500 22px "PingFang SC", sans-serif';
-    ctx.fillText('节气行旅 · TIME TRAVELER', width / 2, 118);
-    ctx.fillStyle = '#efe5d0';
-    ctx.font = '500 80px "Songti SC", "STSong", serif';
-    ctx.fillText('时间行旅', width / 2, 218);
-    ctx.fillStyle = 'rgba(232,226,211,.55)';
-    ctx.font = '20px "PingFang SC", sans-serif';
-    ctx.fillText('二十四节气的物候解谜 · 四季时钟复原纪念', width / 2, 262);
+    ctx.textBaseline = 'middle';
+    ctx.fillText(term.glyph, 0, -3);
+    ctx.fillStyle = 'rgba(255,253,244,.92)';
+    roundedRect(ctx, -68, 70, 136, 42, 14);
+    ctx.fill();
+    ctx.fillStyle = meta.ink;
+    ctx.font = '600 17px "PingFang SC", "Microsoft YaHei", sans-serif';
+    ctx.fillText(term.name, 0, 84);
+    ctx.fillStyle = meta.color;
+    ctx.font = '600 10px "PingFang SC", "Microsoft YaHei", sans-serif';
+    ctx.fillText(term.custom, 0, 101);
+    if (completed) {
+      ctx.fillStyle = '#e3a51c';
+      ctx.font = '600 14px "PingFang SC", sans-serif';
+      ctx.fillText(`${'★'.repeat(record.stars || 1)}`, 0, 131);
+    }
+    ctx.restore();
+  }
 
-    const cx = width / 2;
-    const cy = 520;
-    const ringRadius = 188;
-    ctx.strokeStyle = 'rgba(216,181,107,.22)';
-    ctx.lineWidth = 2;
+  function drawPlayer(ctx) {
+    const meta = currentMeta();
+    const p = state.player;
+    const bob = p.moving ? Math.sin(p.step * 9) * 3 : Math.sin(state.weatherTime * 2) * 1.2;
+    ctx.save();
+    ctx.translate(p.x, p.y + bob);
+    ctx.fillStyle = 'rgba(45,67,51,.17)';
     ctx.beginPath();
-    ctx.arc(cx, cy, ringRadius + 31, 0, Math.PI * 2);
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.arc(cx, cy, ringRadius - 30, 0, Math.PI * 2);
-    ctx.stroke();
-
-    SEASON_ORDER.forEach((season, seasonIndex) => {
-      const meta = DATA.seasons[season];
-      const start = -Math.PI / 2 + seasonIndex * Math.PI / 2;
-      const end = start + Math.PI / 2;
-      ctx.strokeStyle = meta.color;
-      ctx.lineWidth = 10;
+    ctx.ellipse(0, 20, 24, 9, 0, 0, TAU);
+    ctx.fill();
+    if (p.moving) {
+      const swing = Math.sin(p.step * 10) * 6;
+      ctx.strokeStyle = '#46584e';
+      ctx.lineWidth = 6;
       ctx.lineCap = 'round';
       ctx.beginPath();
-      ctx.arc(cx, cy, ringRadius, start + .05, end - .05);
+      ctx.moveTo(-7, 12); ctx.lineTo(-10 + swing, 25);
+      ctx.moveTo(7, 12); ctx.lineTo(10 - swing, 25);
       ctx.stroke();
-      const labelAngle = start + Math.PI / 4;
-      ctx.fillStyle = meta.color;
-      ctx.font = '500 35px "Songti SC", serif';
-      ctx.fillText(meta.name, cx + Math.cos(labelAngle) * (ringRadius - 67), cy + Math.sin(labelAngle) * (ringRadius - 67) + 12);
-    });
-
-    TERMS.forEach((term, index) => {
-      const meta = DATA.seasons[term.season];
-      const angle = -Math.PI / 2 + (term.order / 24) * Math.PI * 2;
-      const x = cx + Math.cos(angle) * (ringRadius + 12);
-      const y = cy + Math.sin(angle) * (ringRadius + 12);
-      ctx.fillStyle = meta.color;
-      ctx.beginPath();
-      ctx.arc(x, y, 6, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.strokeStyle = 'rgba(255,244,214,.8)';
-      ctx.lineWidth = 1;
-      ctx.stroke();
-    });
-
-    const sunGradient = ctx.createRadialGradient(cx - 22, cy - 25, 10, cx, cy, 84);
-    sunGradient.addColorStop(0, '#f4e2b3');
-    sunGradient.addColorStop(.58, '#d8b56b');
-    sunGradient.addColorStop(1, '#a84b39');
-    ctx.fillStyle = sunGradient;
-    ctx.beginPath();
-    ctx.arc(cx, cy, 79, 0, Math.PI * 2);
+    }
+    ctx.fillStyle = meta.color;
+    roundedRect(ctx, -17, -18, 34, 40, 14);
     ctx.fill();
-    ctx.fillStyle = '#16232a';
-    ctx.font = '500 52px "Songti SC", serif';
-    ctx.fillText('时', cx, cy + 19);
-
-    const statY = 790;
-    const statWidth = 258;
-    const gap = 32;
-    const statX = (width - statWidth * 3 - gap * 2) / 2;
-    const stats = [
-      ['主线节点', '24 / 24'],
-      ['物候收录', `${pentadCount()} / 72`],
-      ['节气星数', `${stars} / 72`]
-    ];
-    stats.forEach(([label, value], index) => {
-      const x = statX + index * (statWidth + gap);
-      ctx.fillStyle = 'rgba(255,255,255,.025)';
-      drawRoundRect(ctx, x, statY, statWidth, 112, 18);
-      ctx.fill();
-      ctx.strokeStyle = 'rgba(216,181,107,.17)';
-      ctx.lineWidth = 1;
-      drawRoundRect(ctx, x, statY, statWidth, 112, 18);
-      ctx.stroke();
-      ctx.fillStyle = 'rgba(232,226,211,.5)';
-      ctx.font = '18px "PingFang SC", sans-serif';
-      ctx.fillText(label, x + statWidth / 2, statY + 37);
-      ctx.fillStyle = '#efdaa5';
-      ctx.font = '500 42px "Songti SC", serif';
-      ctx.fillText(value, x + statWidth / 2, statY + 82);
-    });
-
-    const chapterY = 967;
-    ctx.fillStyle = 'rgba(232,226,211,.45)';
-    ctx.font = '17px "PingFang SC", sans-serif';
-    ctx.textAlign = 'left';
-    ctx.fillText('四季印记', 116, chapterY);
-    ctx.textAlign = 'right';
-    ctx.fillText(`章末试炼 ${Object.values(state.save.trials).filter(item => item.completed).length} / 4 · ${trialStars} 星`, width - 116, chapterY);
-    ctx.textAlign = 'center';
-    SEASON_ORDER.forEach((season, index) => {
-      const meta = DATA.seasons[season];
-      const x = 166 + index * 249;
-      ctx.fillStyle = meta.color;
-      ctx.beginPath();
-      ctx.arc(x, chapterY + 66, 15, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.fillStyle = '#e9e1cf';
-      ctx.font = '500 27px "Songti SC", serif';
-      ctx.fillText(meta.name, x, chapterY + 111);
-      ctx.fillStyle = 'rgba(232,226,211,.45)';
-      ctx.font = '16px "PingFang SC", sans-serif';
-      ctx.fillText(meta.motto.slice(0, 6), x, chapterY + 141);
-    });
-
-    ctx.strokeStyle = 'rgba(216,181,107,.22)';
+    ctx.fillStyle = meta.bright;
     ctx.beginPath();
-    ctx.moveTo(116, 1198);
-    ctx.lineTo(width - 116, 1198);
-    ctx.stroke();
-
-    ctx.fillStyle = '#dfd6c4';
-    ctx.font = '500 27px "Songti SC", serif';
-    ctx.fillText('观天有度，识候有信，辨误有据。', width / 2, 1252);
-    ctx.fillStyle = 'rgba(232,226,211,.42)';
-    ctx.font = '17px "PingFang SC", sans-serif';
-    const date = new Date().toLocaleDateString('zh-CN', { year: 'numeric', month: 'long', day: 'numeric' });
-    ctx.fillText(`完成于 ${date} · 本卡不包含任何身份信息`, width / 2, 1292);
-    ctx.fillStyle = '#b94d3b';
-    ctx.strokeStyle = 'rgba(185,77,59,.65)';
-    ctx.lineWidth = 2;
-    drawRoundRect(ctx, width / 2 - 46, 1323, 92, 62, 7);
-    ctx.stroke();
-    ctx.font = '500 31px "Songti SC", serif';
-    ctx.fillText('行旅', width / 2, 1363);
-
-    $('#travelStats').innerHTML = `
-      <div class="travel-stat"><span>主线</span><strong>24 / 24</strong></div>
-      <div class="travel-stat"><span>物候</span><strong>${pentadCount()} / 72</strong></div>
-      <div class="travel-stat"><span>节气星数</span><strong>${stars} / 72</strong></div>
-      <div class="travel-stat"><span>章末试炼</span><strong>${Object.values(state.save.trials).filter(item => item.completed).length} / 4</strong></div>
-    `;
+    ctx.moveTo(-17, -2); ctx.lineTo(0, 13); ctx.lineTo(17, -2); ctx.lineTo(17, 8); ctx.lineTo(0, 22); ctx.lineTo(-17, 8); ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = '#f4c9a4';
+    ctx.beginPath();
+    ctx.arc(0, -33, 18, 0, TAU);
+    ctx.fill();
+    ctx.fillStyle = '#3a423d';
+    ctx.beginPath();
+    ctx.arc(-7, -32, 2.2, 0, TAU); ctx.arc(7, -32, 2.2, 0, TAU); ctx.fill();
+    ctx.strokeStyle = '#a86152';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.arc(0, -26, 5, .2, Math.PI - .2); ctx.stroke();
+    ctx.fillStyle = meta.bright;
+    ctx.beginPath();
+    ctx.ellipse(0, -49, 28, 8, 0, 0, TAU);
+    ctx.fill();
+    ctx.fillStyle = meta.color;
+    ctx.beginPath();
+    ctx.ellipse(0, -55, 16, 10, 0, 0, TAU);
+    ctx.fill();
+    ctx.restore();
   }
 
-  function downloadTravelCard() {
-    const canvas = $('#travelCanvas');
-    if (!canvas) return;
-    canvas.toBlob(blob => {
-      if (!blob) {
-        showToast('成果卡生成失败，请更换浏览器重试。');
-        return;
+  function drawPortal(ctx, season, time) {
+    const meta = DATA.seasons[season];
+    const point = meta.portal;
+    const ready = seasonComplete(season) && SEASON_ORDER.indexOf(season) < SEASON_ORDER.length - 1;
+    ctx.save();
+    ctx.translate(point.x, point.y);
+    ctx.strokeStyle = ready ? meta.bright : 'rgba(255,255,255,.7)';
+    ctx.lineWidth = 5;
+    ctx.beginPath();
+    ctx.arc(0, 0, 52 + Math.sin(time * 2) * 4, 0, TAU);
+    ctx.stroke();
+    ctx.fillStyle = ready ? meta.color : 'rgba(255,253,244,.35)';
+    ctx.beginPath();
+    ctx.arc(0, 0, 42, 0, TAU);
+    ctx.fill();
+    ctx.fillStyle = ready ? '#fff' : meta.ink;
+    ctx.font = '500 23px "Songti SC", serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(ready ? '往' : '锁', 0, 2);
+    ctx.restore();
+  }
+
+  function drawWorldBackground(ctx, season, time) {
+    const meta = DATA.seasons[season];
+    const gradient = ctx.createLinearGradient(0, 0, WORLD.width, WORLD.height);
+    gradient.addColorStop(0, meta.ground);
+    gradient.addColorStop(1, season === 'winter' ? '#d8edf3' : season === 'autumn' ? '#d8a344' : season === 'summer' ? '#65c157' : '#91d368');
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, WORLD.width, WORLD.height);
+
+    ctx.save();
+    ctx.globalAlpha = season === 'winter' ? .18 : .14;
+    ctx.strokeStyle = meta.ink;
+    ctx.lineWidth = 3;
+    for (let y = 120; y < WORLD.height; y += 74) {
+      ctx.beginPath();
+      for (let x = 0; x <= WORLD.width; x += 36) {
+        const yy = y + Math.sin(x * .01 + y * .003) * 12;
+        if (x === 0) ctx.moveTo(x, yy); else ctx.lineTo(x, yy);
       }
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = '节气行旅_时间行旅成果卡.png';
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      setTimeout(() => URL.revokeObjectURL(url), 1500);
-      showToast('时间行旅卡已生成 PNG。');
-    }, 'image/png');
+      ctx.stroke();
+    }
+    ctx.restore();
+
+    ctx.save();
+    const water = ctx.createLinearGradient(0, 0, 0, WORLD.height);
+    water.addColorStop(0, meta.water);
+    water.addColorStop(1, season === 'winter' ? '#ccecf5' : meta.water);
+    ctx.fillStyle = water;
+    if (season === 'spring') {
+      ctx.beginPath(); ctx.ellipse(1610, 980, 190, 95, -.25, 0, TAU); ctx.fill();
+      ctx.strokeStyle = 'rgba(255,255,255,.55)'; ctx.lineWidth = 3; ctx.stroke();
+    } else if (season === 'summer') {
+      ctx.beginPath(); ctx.moveTo(0, 1060); ctx.bezierCurveTo(560, 900, 1220, 1190, WORLD.width, 940); ctx.lineTo(WORLD.width, WORLD.height); ctx.lineTo(0, WORLD.height); ctx.closePath(); ctx.fill();
+      ctx.strokeStyle = 'rgba(255,255,255,.48)'; ctx.lineWidth = 4; ctx.stroke();
+    } else if (season === 'autumn') {
+      ctx.beginPath(); ctx.moveTo(0, 1040); ctx.bezierCurveTo(520, 900, 1230, 1120, WORLD.width, 970); ctx.lineTo(WORLD.width, WORLD.height); ctx.lineTo(0, WORLD.height); ctx.closePath(); ctx.fill();
+      ctx.strokeStyle = 'rgba(255,255,255,.45)'; ctx.lineWidth = 4; ctx.stroke();
+    } else {
+      ctx.beginPath(); ctx.ellipse(1600, 960, 215, 120, -.18, 0, TAU); ctx.fill();
+      ctx.strokeStyle = 'rgba(255,255,255,.9)'; ctx.lineWidth = 5; ctx.stroke();
+      ctx.strokeStyle = 'rgba(124,184,201,.35)'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(1470, 950); ctx.lineTo(1730, 920); ctx.moveTo(1485, 1000); ctx.lineTo(1710, 970); ctx.stroke();
+    }
+    ctx.restore();
+
+    const points = [meta.start, ...seasonTerms(season).map(term => term.position), meta.portal];
+    ctx.save();
+    ctx.lineJoin = 'round';
+    ctx.lineCap = 'round';
+    ctx.strokeStyle = 'rgba(255,255,255,.32)';
+    ctx.lineWidth = 92;
+    ctx.beginPath();
+    points.forEach((p, i) => i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y));
+    ctx.stroke();
+    ctx.strokeStyle = meta.path;
+    ctx.lineWidth = 70;
+    ctx.beginPath();
+    points.forEach((p, i) => i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y));
+    ctx.stroke();
+    ctx.strokeStyle = 'rgba(255,255,255,.35)';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([10, 18]);
+    ctx.beginPath();
+    points.forEach((p, i) => i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y));
+    ctx.stroke();
+    ctx.restore();
+
+    state.decorations[season].slice().sort((a, b) => a.y - b.y).forEach(item => {
+      if (item.type === 'tree') drawTree(ctx, item, season);
+      else if (item.type === 'flower') {
+        const colors = season === 'spring' ? ['#f5a6b8', '#fff1a6', '#ffffff'] : season === 'summer' ? ['#f6c641', '#ff9b45', '#fff1a6'] : season === 'autumn' ? ['#e07b33', '#f1bd4c', '#a9572b'] : ['#d4edf5', '#ffffff', '#b9dce8'];
+        drawFlower(ctx, item.x, item.y, 4 + item.tone * 4, colors[Math.floor(item.tone * colors.length) % colors.length]);
+      } else if (item.type === 'grass') {
+        ctx.save();
+        ctx.strokeStyle = season === 'autumn' ? '#b87335' : season === 'winter' ? '#a8c6d0' : '#4d8d49';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(item.x, item.y);
+        ctx.quadraticCurveTo(item.x - 6, item.y - 14 * item.size, item.x - 2, item.y - 24 * item.size);
+        ctx.moveTo(item.x, item.y);
+        ctx.quadraticCurveTo(item.x + 8, item.y - 12 * item.size, item.x + 5, item.y - 20 * item.size);
+        ctx.stroke();
+        ctx.restore();
+      } else if (item.type === 'stone') {
+        ctx.save();
+        ctx.fillStyle = season === 'winter' ? '#c6dae1' : 'rgba(94,104,91,.32)';
+        ctx.beginPath();
+        ctx.ellipse(item.x, item.y, 10 * item.size, 6 * item.size, item.phase, 0, TAU);
+        ctx.fill();
+        ctx.restore();
+      }
+    });
   }
 
-  async function copyWorkName() {
-    const text = '《节气行旅：二十四节气的物候解谜》';
-    try {
-      await navigator.clipboard.writeText(text);
-      showToast('作品名已复制。');
-    } catch (error) {
-      const area = document.createElement('textarea');
-      area.value = text;
-      area.style.position = 'fixed';
-      area.style.opacity = '0';
-      document.body.appendChild(area);
-      area.select();
-      try { document.execCommand('copy'); showToast('作品名已复制。'); }
-      catch (copyError) { showToast('无法自动复制，请手动记录作品名。'); }
-      area.remove();
+  function drawWeather(ctx, weather, time) {
+    const w = els.canvas.clientWidth;
+    const h = els.canvas.clientHeight;
+    ctx.save();
+    if (weather === 'rain') {
+      ctx.strokeStyle = 'rgba(105,180,207,.46)';
+      ctx.lineWidth = 1.5;
+      for (let i = 0; i < 90; i += 1) {
+        const x = ((i * 137 + time * 160) % (w + 140)) - 70;
+        const y = ((i * 97 + time * 420) % (h + 120)) - 60;
+        ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x - 10, y + 24); ctx.stroke();
+      }
+      for (let i = 0; i < 18; i += 1) {
+        const x = ((i * 211 + time * 32) % (w + 90)) - 30;
+        const y = ((i * 151 + time * 55) % (h + 80)) - 30;
+        ctx.fillStyle = i % 3 === 0 ? 'rgba(249,174,191,.7)' : 'rgba(255,255,255,.45)';
+        ctx.beginPath(); ctx.ellipse(x, y, 5, 2.5, time + i, 0, TAU); ctx.fill();
+      }
+    } else if (weather === 'sun') {
+      const glow = ctx.createRadialGradient(w - 130, 100, 20, w - 130, 100, 190);
+      glow.addColorStop(0, 'rgba(255,229,105,.85)');
+      glow.addColorStop(.35, 'rgba(255,214,68,.3)');
+      glow.addColorStop(1, 'rgba(255,214,68,0)');
+      ctx.fillStyle = glow; ctx.fillRect(0, 0, w, h);
+      ctx.strokeStyle = 'rgba(255,226,104,.45)'; ctx.lineWidth = 2;
+      for (let i = 0; i < 12; i += 1) {
+        const a = i / 12 * TAU + time * .08;
+        ctx.beginPath(); ctx.moveTo(w - 130 + Math.cos(a) * 62, 100 + Math.sin(a) * 62); ctx.lineTo(w - 130 + Math.cos(a) * 105, 100 + Math.sin(a) * 105); ctx.stroke();
+      }
+      for (let i = 0; i < 12; i += 1) {
+        const x = (i * 137 + time * 18) % w;
+        const y = h * .2 + ((i * 71 + time * 23) % (h * .55));
+        ctx.fillStyle = 'rgba(255,241,141,.35)';
+        ctx.beginPath(); ctx.arc(x, y, 2 + (i % 3), 0, TAU); ctx.fill();
+      }
+    } else if (weather === 'leaves') {
+      for (let i = 0; i < 32; i += 1) {
+        const x = ((i * 181 + time * (24 + i % 8)) % (w + 100)) - 50;
+        const y = ((i * 113 + time * 55) % (h + 100)) - 50;
+        const angle = time * (.5 + (i % 5) * .12) + i;
+        ctx.save(); ctx.translate(x, y); ctx.rotate(angle);
+        ctx.fillStyle = ['rgba(216,99,41,.68)', 'rgba(246,179,67,.67)', 'rgba(171,86,39,.58)'][i % 3];
+        ctx.beginPath(); ctx.ellipse(0, 0, 9, 4, 0, 0, TAU); ctx.fill();
+        ctx.restore();
+      }
+    } else if (weather === 'snow') {
+      for (let i = 0; i < 110; i += 1) {
+        const x = ((i * 149 + Math.sin(time * .7 + i) * 26 + time * 22) % (w + 80)) - 40;
+        const y = ((i * 83 + time * (25 + i % 5 * 4)) % (h + 80)) - 40;
+        const r = 1.2 + (i % 4) * .7;
+        ctx.fillStyle = i % 5 === 0 ? 'rgba(255,255,255,.95)' : 'rgba(255,255,255,.72)';
+        ctx.beginPath(); ctx.arc(x, y, r, 0, TAU); ctx.fill();
+      }
+      ctx.fillStyle = 'rgba(232,250,255,.08)'; ctx.fillRect(0, 0, w, h);
+    }
+    ctx.restore();
+  }
+
+  function drawWorld(time) {
+    const ctx = worldContext();
+    const w = els.canvas.clientWidth;
+    const h = els.canvas.clientHeight;
+    ctx.clearRect(0, 0, w, h);
+    const meta = currentMeta();
+    const sky = ctx.createLinearGradient(0, 0, 0, h);
+    sky.addColorStop(0, meta.sky);
+    sky.addColorStop(1, meta.pale);
+    ctx.fillStyle = sky;
+    ctx.fillRect(0, 0, w, h);
+    ctx.save();
+    ctx.translate(-state.camera.x, -state.camera.y);
+    drawWorldBackground(ctx, state.season, time);
+    drawPortal(ctx, state.season, time);
+    seasonTerms(state.season).forEach(term => drawStation(ctx, term, term === state.nearTerm, time));
+    drawPlayer(ctx);
+    ctx.restore();
+    drawWeather(ctx, meta.weather, time);
+    ctx.fillStyle = 'rgba(255,255,255,.04)';
+    ctx.fillRect(0, 0, w, h);
+  }
+
+  function updatePrompt() {
+    const term = nearestTerm();
+    if (state.mode !== 'world' || !term) {
+      els.prompt.hidden = true;
+      state.nearTerm = term;
+      return;
+    }
+    state.nearTerm = term;
+    const complete = Boolean(stationRecord(term.id)?.complete);
+    els.nearStationName.textContent = `${term.name} · ${term.custom}${complete ? ' · 重玩' : ''}`;
+    const key = $('.interaction-prompt__key', els.prompt);
+    if (key) key.textContent = isTouchLike() ? '行' : 'E';
+    els.prompt.hidden = false;
+  }
+
+  function updateWorld(dt) {
+    if (state.mode !== 'world') return;
+    let dx = 0;
+    let dy = 0;
+    if (state.keys.w || state.keys.arrowup) dy -= 1;
+    if (state.keys.s || state.keys.arrowdown) dy += 1;
+    if (state.keys.a || state.keys.arrowleft) dx -= 1;
+    if (state.keys.d || state.keys.arrowright) dx += 1;
+    if (Math.abs(state.joystick.x) > .12) dx += state.joystick.x;
+    if (Math.abs(state.joystick.y) > .12) dy += state.joystick.y;
+    const length = Math.hypot(dx, dy);
+    if (length > 1) { dx /= length; dy /= length; }
+    const moving = length > .08;
+    state.player.moving = moving;
+    if (moving) {
+      const speed = 225;
+      state.player.x = clamp(state.player.x + dx * speed * dt, 35, WORLD.width - 35);
+      state.player.y = clamp(state.player.y + dy * speed * dt, 35, WORLD.height - 35);
+      state.player.step += dt;
+      if (Math.abs(dx) > Math.abs(dy)) state.player.facing = dx > 0 ? 'right' : 'left';
+      else state.player.facing = dy > 0 ? 'down' : 'up';
+    }
+    updateCamera();
+    updatePrompt();
+  }
+
+  /* ----------------------------- Mini games ----------------------------- */
+
+  function resizeMiniCanvas() {
+    return setupMiniCanvas();
+  }
+
+  function setupMiniCanvas() {
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    els.miniCanvas.width = MINI.width * dpr;
+    els.miniCanvas.height = MINI.height * dpr;
+    els.miniCanvas.dataset.dpr = String(dpr);
+    return miniContext();
+  }
+
+  function miniContext() {
+    const ctx = els.miniCanvas.getContext('2d');
+    const dpr = Number(els.miniCanvas.dataset.dpr || 1);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    return ctx;
+  }
+
+  function openMiniGame(term) {
+    if (state.mode !== 'world') return;
+    state.mode = 'mini';
+    const meta = DATA.seasons[term.season];
+    state.mini = {
+      term, game: term.game, type: term.game.type, elapsed: 0, mistakes: 0,
+      finished: false, failed: false, stars: 0, score: 0,
+      pointerX: MINI.width / 2, pointerY: MINI.height / 2, pointerActive: false,
+      flash: '', flashTimer: 0, last: performance.now()
+    };
+    initializeMini(state.mini);
+    els.miniSeason.textContent = `${meta.name}之章 · ${term.name}`;
+    els.miniTitle.textContent = term.game.title;
+    els.miniCustom.textContent = term.custom;
+    els.miniHint.textContent = term.game.hint;
+    els.miniOverlay.hidden = false;
+    els.prompt.hidden = true;
+    setupMiniCanvas();
+    state.miniFrame = requestAnimationFrame(loopMini);
+    playSound('open');
+  }
+
+  function initializeMini(mini) {
+    mini.elapsed = 0;
+    mini.mistakes = 0;
+    mini.finished = false;
+    mini.failed = false;
+    mini.flash = '';
+    mini.flashTimer = 0;
+    mini.buttons = [];
+    mini.closeTimer = 0;
+    mini.finishAt = null;
+    if (mini.type === 'collect') {
+      mini.basketX = MINI.width / 2;
+      mini.items = [];
+      mini.spawnClock = .2;
+      mini.spawnIndex = 0;
+      mini.collected = 0;
+      mini.targetCount = mini.game.targetCount || 6;
+      mini.timeLimit = 32;
+    } else if (mini.type === 'rhythm') {
+      mini.beats = Array.from({ length: mini.game.beats || 5 }, (_, i) => ({ time: 1.2 + i * (mini.game.tempo || 1.1), resolved: false, good: false }));
+      mini.goodHits = 0;
+      mini.lastBeatPulse = 0;
+    } else if (mini.type === 'timing') {
+      mini.round = 0;
+      mini.successes = 0;
+      mini.pos = .08;
+      mini.dir = 1;
+      mini.delay = 0;
+      mini.lastSuccess = false;
+    } else if (mini.type === 'sort') {
+      mini.index = 0;
+      mini.correct = 0;
+      mini.lockTimer = 0;
+    } else if (mini.type === 'path') {
+      mini.progress = 0;
+      mini.playerX = MINI.width / 2;
+      mini.targetX = MINI.width / 2;
+      mini.objects = [];
+      mini.spawnClock = .25;
+      mini.spawnIndex = 0;
+      mini.collected = 0;
+      mini.targetCount = mini.game.targetCount || 3;
+      mini.collisions = 0;
+    } else if (mini.type === 'sequence') {
+      mini.phase = 'show';
+      mini.showIndex = 0;
+      mini.showClock = 0;
+      mini.currentFlash = -1;
+      mini.input = [];
     }
   }
 
+  function restartMini() {
+    const mini = state.mini;
+    if (!mini) return;
+    initializeMini(mini);
+    mini.last = performance.now();
+    setupMiniCanvas();
+  }
+
+  function closeMini(completed = false) {
+    if (!state.mini) return;
+    const mini = state.mini;
+    if (mini.closeTimer) clearTimeout(mini.closeTimer);
+    cancelAnimationFrame(state.miniFrame);
+    state.mini = null;
+    els.miniOverlay.hidden = true;
+    state.mode = 'world';
+    els.touchControls.hidden = !isTouchLike();
+    if (completed) setTimeout(() => maybeShowChapter(mini.term.season), 350);
+  }
+
+  function miniPoint(event) {
+    const rect = els.miniCanvas.getBoundingClientRect();
+    return { x: (event.clientX - rect.left) / rect.width * MINI.width, y: (event.clientY - rect.top) / rect.height * MINI.height };
+  }
+
+  function miniPointerDown(event) {
+    const mini = state.mini;
+    if (!mini) return;
+    event.preventDefault();
+    const point = miniPoint(event);
+    mini.pointerX = point.x; mini.pointerY = point.y; mini.pointerActive = true;
+    if (mini.failed) { restartMini(); return; }
+    if (mini.finished) return;
+    if (mini.type === 'rhythm' || mini.type === 'timing') miniAction();
+    else if (mini.type === 'sort') {
+      const button = mini.buttons.find(b => point.x >= b.x && point.x <= b.x + b.w && point.y >= b.y && point.y <= b.y + b.h);
+      if (button) chooseSort(button.index);
+    } else if (mini.type === 'sequence') {
+      const button = mini.buttons.find(b => point.x >= b.x && point.x <= b.x + b.w && point.y >= b.y && point.y <= b.y + b.h);
+      if (button) chooseSequence(button.index);
+    }
+  }
+
+  function miniPointerMove(event) {
+    const mini = state.mini;
+    if (!mini || mini.finished || mini.failed) return;
+    const point = miniPoint(event);
+    mini.pointerX = point.x; mini.pointerY = point.y;
+    if (mini.type === 'collect' || mini.type === 'path') mini.pointerActive = true;
+  }
+
+  function miniPointerUp() {
+    if (state.mini?.type === 'path') state.mini.pointerActive = false;
+  }
+
+  function miniAction() {
+    const mini = state.mini;
+    if (!mini) return;
+    if (mini.failed) { restartMini(); return; }
+    if (mini.finished) return;
+    if (mini.type === 'rhythm') hitRhythm();
+    else if (mini.type === 'timing') hitTiming();
+  }
+
+  function miniKey(event, key) {
+    const mini = state.mini;
+    if (!mini) return false;
+    if (event.key === 'Escape') { closeMini(false); return true; }
+    if (mini.failed) {
+      if (event.key === ' ' || event.key === 'Enter') { restartMini(); return true; }
+      return false;
+    }
+    if (mini.finished) return true;
+    if (mini.type === 'rhythm' || mini.type === 'timing') {
+      if (event.key === ' ' || event.key === 'Enter') { miniAction(); return true; }
+    }
+    if (mini.type === 'sort' && /^[1-9]$/.test(event.key)) { chooseSort(Number(event.key) - 1); return true; }
+    if (mini.type === 'sequence' && /^[1-9]$/.test(event.key)) { chooseSequence(Number(event.key) - 1); return true; }
+    if (mini.type === 'collect') {
+      if (event.key === 'ArrowLeft' || event.key === 'a' || event.key === 'A') { mini.basketX = clamp(mini.basketX - 42, 70, MINI.width - 70); mini.pointerActive = false; }
+      if (event.key === 'ArrowRight' || event.key === 'd' || event.key === 'D') { mini.basketX = clamp(mini.basketX + 42, 70, MINI.width - 70); mini.pointerActive = false; }
+    }
+    if (mini.type === 'path') {
+      if (event.key === 'ArrowLeft' || event.key === 'a' || event.key === 'A') { mini.targetX = clamp(mini.targetX - 42, 220, MINI.width - 220); mini.pointerActive = false; }
+      if (event.key === 'ArrowRight' || event.key === 'd' || event.key === 'D') { mini.targetX = clamp(mini.targetX + 42, 220, MINI.width - 220); mini.pointerActive = false; }
+    }
+    return false;
+  }
+
+  function updateMini(mini, dt) {
+    mini.elapsed += dt;
+    if (mini.flashTimer > 0) mini.flashTimer -= dt;
+    if (mini.type === 'collect') updateCollect(mini, dt);
+    else if (mini.type === 'rhythm') updateRhythm(mini, dt);
+    else if (mini.type === 'timing') updateTiming(mini, dt);
+    else if (mini.type === 'sort') updateSort(mini, dt);
+    else if (mini.type === 'path') updatePath(mini, dt);
+    else if (mini.type === 'sequence') updateSequence(mini, dt);
+  }
+
+  function failMini(message) {
+    const mini = state.mini;
+    if (!mini || mini.finished || mini.failed) return;
+    mini.failed = true;
+    mini.failedMessage = message || '再来一次';
+    playSound('error');
+  }
+
+  function finishMini() {
+    const mini = state.mini;
+    if (!mini || mini.finished) return;
+    mini.finished = true;
+    const stars = mini.mistakes === 0 ? 3 : mini.mistakes <= 2 ? 2 : 1;
+    const score = Math.max(250, 1000 - mini.mistakes * 120 - Math.max(0, Math.round(mini.elapsed * 2)));
+    mini.stars = stars; mini.score = score;
+    const term = mini.term;
+    const previous = state.save.stations[term.id] || {};
+    state.save.stations[term.id] = {
+      complete: true,
+      stars: Math.max(previous.stars || 0, stars),
+      bestScore: Math.max(previous.bestScore || 0, score),
+      lastScore: score,
+      completedAt: previous.completedAt || new Date().toISOString()
+    };
+    persist(); renderHUD();
+    playSound('complete');
+    showToast(`${term.name} · ${term.custom}完成`);
+    mini.closeTimer = setTimeout(() => { if (state.mini === mini) closeMini(true); }, 1500);
+  }
+
+  function updateCollect(mini, dt) {
+    if (mini.failed || mini.finished) return;
+    if (mini.elapsed > mini.timeLimit) { failMini('时间到了，再试一次'); return; }
+    if (state.keys.arrowleft || state.keys.a) mini.pointerActive = false;
+    if (state.keys.arrowright || state.keys.d) mini.pointerActive = false;
+    let basketMove = 0;
+    if (state.keys.arrowleft || state.keys.a) basketMove -= 280 * dt;
+    if (state.keys.arrowright || state.keys.d) basketMove += 280 * dt;
+    mini.basketX = clamp(mini.basketX + basketMove, 70, MINI.width - 70);
+    if (mini.pointerActive) mini.basketX += (mini.pointerX - mini.basketX) * Math.min(1, dt * 12);
+    mini.spawnClock -= dt;
+    if (mini.spawnClock <= 0) {
+      mini.spawnClock = .48;
+      const isTarget = mini.spawnIndex % 3 !== 2;
+      const pool = isTarget ? mini.game.targets : mini.game.avoid;
+      const choice = pool[Math.floor(Math.random() * pool.length)];
+      mini.items.push({ x: 70 + Math.random() * (MINI.width - 140), y: -50, vy: 125 + Math.random() * 55, target: isTarget, name: choice.name, glyph: choice.glyph });
+      mini.spawnIndex += 1;
+    }
+    mini.items.forEach(item => { item.y += item.vy * dt; });
+    for (let i = mini.items.length - 1; i >= 0; i -= 1) {
+      const item = mini.items[i];
+      if (item.y > 440 && item.y < 520 && Math.abs(item.x - mini.basketX) < 61) {
+        if (item.target) {
+          mini.collected += 1; mini.flash = `+ ${item.name}`; mini.flashTimer = .35; playSound('tick');
+        } else {
+          mini.mistakes += 1; mini.flash = '碰倒了'; mini.flashTimer = .35; playSound('error');
+        }
+        mini.items.splice(i, 1);
+      } else if (item.y > 615) {
+        if (item.target) mini.mistakes += 1;
+        mini.items.splice(i, 1);
+      }
+    }
+    if (mini.collected >= mini.targetCount) finishMini();
+  }
+
+  function hitRhythm() {
+    const mini = state.mini;
+    if (!mini || mini.type !== 'rhythm' || mini.finished) return;
+    const candidates = mini.beats.filter(beat => !beat.resolved);
+    if (!candidates.length) return;
+    candidates.sort((a, b) => Math.abs(a.time - mini.elapsed) - Math.abs(b.time - mini.elapsed));
+    const beat = candidates[0];
+    if (Math.abs(beat.time - mini.elapsed) <= .2) {
+      beat.resolved = true; beat.good = true; mini.goodHits += 1;
+      mini.flash = '好拍'; mini.flashTimer = .3; playSound('tick');
+    } else {
+      mini.mistakes += 1; mini.flash = '早了 / 晚了'; mini.flashTimer = .3; playSound('error');
+    }
+  }
+
+  function updateRhythm(mini, dt) {
+    mini.beats.forEach(beat => {
+      if (!beat.resolved && mini.elapsed > beat.time + .25) { beat.resolved = true; mini.mistakes += 1; }
+    });
+    const current = mini.beats.find(beat => !beat.resolved);
+    mini.lastBeatPulse = current ? clamp(1 - Math.abs(current.time - mini.elapsed) / .5, 0, 1) : 0;
+    if (mini.beats.every(beat => beat.resolved) && !mini.finishAt) mini.finishAt = mini.elapsed + .7;
+    if (mini.finishAt && mini.elapsed >= mini.finishAt) finishMini();
+  }
+
+  function hitTiming() {
+    const mini = state.mini;
+    if (!mini || mini.type !== 'timing' || mini.finished || mini.delay > 0) return;
+    const zone = .14 - mini.round * .025;
+    const success = Math.abs(mini.pos - .5) <= zone;
+    if (success) { mini.successes += 1; mini.flash = '稳！'; mini.flashTimer = .4; playSound('correct'); }
+    else { mini.mistakes += 1; mini.flash = '再稳一点'; mini.flashTimer = .4; playSound('error'); }
+    mini.lastSuccess = success;
+    mini.round += 1;
+    if (mini.round >= (mini.game.rounds || 3)) mini.finishAt = mini.elapsed + .8;
+    else mini.delay = .65;
+  }
+
+  function updateTiming(mini, dt) {
+    if (mini.delay > 0) {
+      mini.delay -= dt;
+      if (mini.delay <= 0) { mini.pos = .08; mini.dir = 1; }
+    } else if (!mini.finishAt) {
+      mini.pos += mini.dir * dt * .82;
+      if (mini.pos >= 1) { mini.pos = 1; mini.dir = -1; }
+      if (mini.pos <= 0) { mini.pos = 0; mini.dir = 1; }
+    }
+    if (mini.finishAt && mini.elapsed >= mini.finishAt) finishMini();
+  }
+
+  function chooseSort(index) {
+    const mini = state.mini;
+    if (!mini || mini.type !== 'sort' || mini.finished || mini.lockTimer > 0) return;
+    const item = mini.game.items[mini.index];
+    if (!item || index < 0 || index >= mini.game.categories.length) return;
+    if (index === item.cat) { mini.correct += 1; mini.flash = '分对了'; mini.flashTimer = .35; playSound('correct'); }
+    else { mini.mistakes += 1; mini.flash = '放错了'; mini.flashTimer = .35; playSound('error'); }
+    mini.index += 1;
+    mini.lockTimer = .42;
+  }
+
+  function updateSort(mini, dt) {
+    if (mini.lockTimer > 0) mini.lockTimer -= dt;
+    if (mini.index >= mini.game.items.length && mini.lockTimer <= 0) finishMini();
+  }
+
+  function updatePath(mini, dt) {
+    if (mini.finished || mini.failed) return;
+    if (state.keys.arrowleft || state.keys.a) { mini.targetX = clamp(mini.targetX - 300 * dt, 220, MINI.width - 220); mini.pointerActive = false; }
+    if (state.keys.arrowright || state.keys.d) { mini.targetX = clamp(mini.targetX + 300 * dt, 220, MINI.width - 220); mini.pointerActive = false; }
+    if (mini.pointerActive) mini.targetX = clamp(mini.pointerX, 220, MINI.width - 220);
+    mini.playerX += (mini.targetX - mini.playerX) * Math.min(1, dt * 8);
+    mini.progress = clamp(mini.progress + dt / 10, 0, 1);
+    mini.spawnClock -= dt;
+    if (mini.spawnClock <= 0) {
+      mini.spawnClock = .68;
+      mini.spawnIndex += 1;
+      const target = mini.progress >= 1 || mini.spawnIndex % 3 === 0;
+      mini.objects.push({ x: 235 + Math.random() * (MINI.width - 470), y: -45, target });
+    }
+    mini.objects.forEach(object => { object.y += 185 * dt + mini.progress * 35 * dt; });
+    for (let i = mini.objects.length - 1; i >= 0; i -= 1) {
+      const object = mini.objects[i];
+      if (object.y > 425 && object.y < 515 && Math.abs(object.x - mini.playerX) < 46) {
+        if (object.target) { mini.collected += 1; mini.flash = mini.game.targetName; mini.flashTimer = .35; playSound('tick'); }
+        else { mini.collisions += 1; mini.mistakes += 1; mini.flash = mini.game.obstacleName; mini.flashTimer = .35; playSound('error'); }
+        mini.objects.splice(i, 1);
+      } else if (object.y > 620) mini.objects.splice(i, 1);
+    }
+    if (mini.progress >= 1 && mini.collected >= mini.targetCount) finishMini();
+  }
+
+  function updateSequence(mini, dt) {
+    if (mini.phase !== 'show') return;
+    mini.showClock += dt;
+    if (mini.flashTimer > 0) mini.flashTimer -= dt;
+    if (mini.showClock >= .7) {
+      mini.showClock = 0;
+      if (mini.showIndex < mini.game.sequence.length) {
+        mini.currentFlash = mini.game.sequence[mini.showIndex];
+        mini.flashTimer = .42;
+        mini.showIndex += 1;
+      } else {
+        mini.phase = 'input';
+        mini.currentFlash = -1;
+        mini.showClock = 0;
+      }
+    }
+  }
+
+  function chooseSequence(index) {
+    const mini = state.mini;
+    if (!mini || mini.type !== 'sequence' || mini.finished || mini.phase !== 'input') return;
+    const expected = mini.game.sequence[mini.input.length];
+    if (index === expected) {
+      mini.input.push(index); mini.flash = mini.game.symbols[index].name; mini.flashTimer = .3; playSound('tick');
+      if (mini.input.length === mini.game.sequence.length) finishMini();
+    } else {
+      mini.mistakes += 1;
+      mini.input = [];
+      mini.phase = 'show';
+      mini.showIndex = 0;
+      mini.showClock = 0;
+      mini.currentFlash = -1;
+      mini.flash = '顺序乱了，再看一次';
+      mini.flashTimer = .55;
+      playSound('error');
+    }
+  }
+
+  function drawMiniBackdrop(ctx, mini) {
+    const meta = DATA.seasons[mini.term.season];
+    const gradient = ctx.createLinearGradient(0, 0, MINI.width, MINI.height);
+    gradient.addColorStop(0, meta.pale);
+    gradient.addColorStop(.55, '#fffdf4');
+    gradient.addColorStop(1, meta.sky);
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, MINI.width, MINI.height);
+    ctx.save();
+    ctx.globalAlpha = .22;
+    ctx.fillStyle = meta.bright;
+    ctx.beginPath(); ctx.arc(80, 80, 120, 0, TAU); ctx.fill();
+    ctx.beginPath(); ctx.arc(MINI.width - 80, MINI.height - 80, 145, 0, TAU); ctx.fill();
+    ctx.globalAlpha = .12;
+    ctx.strokeStyle = meta.ink;
+    ctx.lineWidth = 2;
+    for (let i = 0; i < 7; i += 1) {
+      ctx.beginPath();
+      ctx.arc(MINI.width / 2, MINI.height / 2, 80 + i * 45, 0, TAU);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  function miniBadge(ctx, text, x, y, color) {
+    ctx.save();
+    ctx.font = '600 17px "PingFang SC", "Microsoft YaHei", sans-serif';
+    const width = ctx.measureText(text).width + 28;
+    roundedRect(ctx, x - width / 2, y - 18, width, 36, 18);
+    ctx.fillStyle = color;
+    ctx.fill();
+    ctx.fillStyle = '#fff';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(text, x, y + 1);
+    ctx.restore();
+  }
+
+  function miniFlashText(ctx, mini) {
+    if (!mini.flash || mini.flashTimer <= 0) return;
+    const alpha = clamp(mini.flashTimer / .35, 0, 1);
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.font = '600 26px "Songti SC", "STSong", serif';
+    ctx.fillStyle = DATA.seasons[mini.term.season].ink;
+    ctx.textAlign = 'center';
+    ctx.fillText(mini.flash, MINI.width / 2, 120);
+    ctx.restore();
+  }
+
+  function drawCollect(ctx, mini) {
+    const meta = DATA.seasons[mini.term.season];
+    drawMiniBackdrop(ctx, mini);
+    const timeLeft = Math.max(0, mini.timeLimit - mini.elapsed);
+    const barWidth = MINI.width - 120;
+    roundedRect(ctx, 60, 38, barWidth, 10, 5);
+    ctx.fillStyle = 'rgba(255,255,255,.7)'; ctx.fill();
+    roundedRect(ctx, 60, 38, barWidth * (timeLeft / mini.timeLimit), 10, 5);
+    ctx.fillStyle = mini.elapsed / mini.timeLimit > .75 ? '#d7603c' : meta.color; ctx.fill();
+    ctx.fillStyle = meta.ink;
+    ctx.font = '600 15px "PingFang SC", sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillText(`收集 ${mini.collected} / ${mini.targetCount}`, 60, 76);
+    mini.game.targets.forEach((target, index) => {
+      const x = 650 + index * 96;
+      ctx.fillStyle = 'rgba(255,255,255,.68)';
+      ctx.beginPath(); ctx.arc(x, 64, 23, 0, TAU); ctx.fill();
+      ctx.fillStyle = meta.ink;
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.font = '600 18px "Songti SC", serif';
+      ctx.fillText(target.glyph, x, 65);
+    });
+    mini.items.forEach(item => {
+      ctx.save();
+      ctx.translate(item.x, item.y);
+      ctx.fillStyle = 'rgba(51,74,45,.09)';
+      ctx.beginPath(); ctx.ellipse(0, 25, 28, 8, 0, 0, TAU); ctx.fill();
+      roundedRect(ctx, -30, -22, 60, 44, 13);
+      ctx.fillStyle = '#fffdf4'; ctx.fill();
+      ctx.strokeStyle = meta.color; ctx.lineWidth = 2; ctx.stroke();
+      ctx.fillStyle = meta.ink;
+      ctx.font = '600 20px "Songti SC", serif';
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(item.glyph, 0, -1);
+      ctx.font = '600 9px "PingFang SC", sans-serif';
+      ctx.fillStyle = '#69776d';
+      ctx.fillText(item.name, 0, 15);
+      ctx.restore();
+    });
+    const bx = mini.basketX;
+    ctx.save();
+    ctx.translate(bx, 490);
+    ctx.fillStyle = 'rgba(56,73,49,.12)';
+    ctx.beginPath(); ctx.ellipse(0, 54, 58, 15, 0, 0, TAU); ctx.fill();
+    ctx.fillStyle = meta.color;
+    ctx.beginPath(); ctx.moveTo(-62, -12); ctx.lineTo(62, -12); ctx.lineTo(46, 48); ctx.quadraticCurveTo(0, 66, -46, 48); ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = 'rgba(255,255,255,.8)'; ctx.lineWidth = 4;
+    ctx.beginPath(); ctx.ellipse(0, -12, 63, 18, 0, 0, TAU); ctx.stroke();
+    ctx.fillStyle = '#fff';
+    ctx.font = '600 20px "Songti SC", serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('接', 0, 20);
+    ctx.restore();
+    miniFlashText(ctx, mini);
+  }
+
+  function drawRhythm(ctx, mini) {
+    const meta = DATA.seasons[mini.term.season];
+    drawMiniBackdrop(ctx, mini);
+    ctx.save();
+    ctx.translate(MINI.width / 2, 285);
+    const pulse = 1 + (mini.lastBeatPulse || 0) * .12;
+    ctx.scale(pulse, pulse);
+    for (let i = 0; i < 3; i += 1) {
+      ctx.strokeStyle = `rgba(255,255,255,${.55 - i * .12})`;
+      ctx.lineWidth = 3 - i * .5;
+      ctx.beginPath(); ctx.arc(0, 0, 116 + i * 24, 0, TAU); ctx.stroke();
+    }
+    ctx.fillStyle = meta.color;
+    ctx.beginPath(); ctx.arc(0, 0, 94, 0, TAU); ctx.fill();
+    ctx.strokeStyle = 'rgba(255,255,255,.85)'; ctx.lineWidth = 6; ctx.stroke();
+    ctx.fillStyle = '#fff';
+    ctx.font = '500 58px "Songti SC", serif';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(mini.game.instrument || '鼓', 0, 4);
+    ctx.restore();
+    ctx.fillStyle = meta.ink;
+    ctx.textAlign = 'center';
+    ctx.font = '600 18px "PingFang SC", sans-serif';
+    ctx.fillText('节拍环收进鼓面时，点击 / 空格', MINI.width / 2, 448);
+    ctx.font = '600 13px "PingFang SC", sans-serif';
+    ctx.fillStyle = '#748178';
+    ctx.fillText('命中 ' + mini.goodHits + ' / ' + mini.beats.length, MINI.width / 2, 478);
+    mini.beats.forEach((beat, index) => {
+      const x = 350 + index * 65;
+      ctx.fillStyle = beat.good ? meta.color : beat.resolved ? 'rgba(99,111,100,.28)' : 'rgba(255,255,255,.78)';
+      ctx.beginPath(); ctx.arc(x, 515, 10, 0, TAU); ctx.fill();
+      ctx.strokeStyle = meta.color; ctx.lineWidth = 2; ctx.stroke();
+    });
+    miniFlashText(ctx, mini);
+  }
+
+  function drawTiming(ctx, mini) {
+    const meta = DATA.seasons[mini.term.season];
+    drawMiniBackdrop(ctx, mini);
+    ctx.save();
+    ctx.translate(MINI.width / 2, 205);
+    const wobble = Math.sin(mini.elapsed * (mini.round < 2 ? 2 : 5)) * (mini.round < 2 ? 3 : 9);
+    ctx.rotate(wobble * Math.PI / 180);
+    ctx.fillStyle = 'rgba(255,255,255,.9)';
+    ctx.beginPath(); ctx.ellipse(0, 28, 66, 17, 0, 0, TAU); ctx.fill();
+    ctx.fillStyle = '#f9e5bf';
+    ctx.beginPath(); ctx.ellipse(0, -5, 44, 67, 0, 0, TAU); ctx.fill();
+    ctx.strokeStyle = meta.color; ctx.lineWidth = 3; ctx.stroke();
+    ctx.fillStyle = meta.ink;
+    ctx.font = '600 26px "Songti SC", serif';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(mini.game.objectGlyph || '蛋', 0, -8);
+    ctx.restore();
+    const zoneHalf = .14 - mini.round * .025;
+    const zoneLeft = 100 + (MINI.width - 200) * (.5 - zoneHalf);
+    const zoneWidth = (MINI.width - 200) * zoneHalf * 2;
+    roundedRect(ctx, 100, 350, MINI.width - 200, 26, 13);
+    ctx.fillStyle = 'rgba(255,255,255,.72)'; ctx.fill();
+    ctx.fillStyle = 'rgba(81,162,92,.42)';
+    ctx.fillRect(zoneLeft, 350, zoneWidth, 26);
+    const markerX = 100 + (MINI.width - 200) * mini.pos;
+    ctx.fillStyle = meta.color;
+    ctx.beginPath(); ctx.arc(markerX, 363, 18, 0, TAU); ctx.fill();
+    ctx.strokeStyle = '#fff'; ctx.lineWidth = 4; ctx.stroke();
+    ctx.fillStyle = meta.ink;
+    ctx.font = '600 16px "PingFang SC", sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('停在绿色区域', MINI.width / 2, 418);
+    ctx.font = '600 13px "PingFang SC", sans-serif';
+    ctx.fillStyle = '#748178';
+    ctx.fillText(`第 ${Math.min(mini.round + 1, mini.game.rounds)} / ${mini.game.rounds} 回合 · 成功 ${mini.successes}`, MINI.width / 2, 448);
+    miniFlashText(ctx, mini);
+  }
+
+  function drawSort(ctx, mini) {
+    const meta = DATA.seasons[mini.term.season];
+    drawMiniBackdrop(ctx, mini);
+    mini.buttons = [];
+    const item = mini.game.items[Math.min(mini.index, mini.game.items.length - 1)];
+    ctx.save();
+    ctx.translate(MINI.width / 2, 230);
+    roundedRect(ctx, -150, -100, 300, 200, 26);
+    ctx.fillStyle = 'rgba(255,255,255,.9)'; ctx.fill();
+    ctx.strokeStyle = meta.color; ctx.lineWidth = 3; ctx.stroke();
+    ctx.fillStyle = meta.ink;
+    ctx.font = '600 72px "Songti SC", serif';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(item?.glyph || '？', 0, -15);
+    ctx.font = '600 20px "PingFang SC", sans-serif';
+    ctx.fillText(item?.name || '完成', 0, 62);
+    ctx.restore();
+    const count = mini.game.categories.length;
+    const totalW = count * 210 + (count - 1) * 22;
+    mini.game.categories.forEach((category, index) => {
+      const x = MINI.width / 2 - totalW / 2 + index * 232;
+      const y = 390;
+      roundedRect(ctx, x, y, 210, 92, 20);
+      ctx.fillStyle = index === 0 ? '#f7e4c1' : index === 1 ? '#dff1dc' : '#e4e8f7';
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(45,67,51,.12)'; ctx.lineWidth = 2; ctx.stroke();
+      ctx.fillStyle = meta.ink;
+      ctx.font = '500 24px "Songti SC", serif';
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(category.glyph, x + 105, y + 37);
+      ctx.font = '600 11px "PingFang SC", sans-serif';
+      ctx.fillStyle = '#6d796f';
+      ctx.fillText(category.name, x + 105, y + 70);
+      mini.buttons.push({ x, y, w: 210, h: 92, index });
+    });
+    ctx.fillStyle = meta.ink;
+    ctx.font = '600 14px "PingFang SC", sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(`第 ${Math.min(mini.index + 1, mini.game.items.length)} / ${mini.game.items.length} 张`, MINI.width / 2, 360);
+    miniFlashText(ctx, mini);
+  }
+
+  function drawPath(ctx, mini) {
+    const meta = DATA.seasons[mini.term.season];
+    drawMiniBackdrop(ctx, mini);
+    ctx.save();
+    const river = ctx.createLinearGradient(0, 0, 0, MINI.height);
+    river.addColorStop(0, meta.water);
+    river.addColorStop(1, '#dff8f7');
+    ctx.fillStyle = river;
+    ctx.beginPath();
+    ctx.moveTo(175, 0); ctx.bezierCurveTo(300, 180, 160, 390, 260, MINI.height);
+    ctx.lineTo(MINI.width - 260, MINI.height); ctx.bezierCurveTo(MINI.width - 160, 390, MINI.width - 300, 180, MINI.width - 175, 0); ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = 'rgba(255,255,255,.55)'; ctx.lineWidth = 3;
+    for (let i = 0; i < 6; i += 1) {
+      const y = ((i * 110 + mini.elapsed * 70) % (MINI.height + 100)) - 50;
+      ctx.beginPath(); ctx.moveTo(230, y); ctx.bezierCurveTo(420, y - 20, 590, y + 20, 730, y); ctx.stroke();
+    }
+    ctx.fillStyle = 'rgba(102,157,99,.82)';
+    ctx.fillRect(0, 0, 175, MINI.height); ctx.fillRect(MINI.width - 175, 0, 175, MINI.height);
+    ctx.restore();
+    ctx.fillStyle = meta.ink;
+    ctx.font = '600 14px "PingFang SC", sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillText(`${mini.game.targetName} ${mini.collected}/${mini.targetCount}  ·  航程 ${Math.round(mini.progress * 100)}%`, 60, 44);
+    ctx.fillStyle = 'rgba(255,255,255,.7)';
+    roundedRect(ctx, 60, 58, MINI.width - 120, 9, 5); ctx.fill();
+    roundedRect(ctx, 60, 58, (MINI.width - 120) * mini.progress, 9, 5);
+    ctx.fillStyle = meta.color; ctx.fill();
+    mini.objects.forEach(object => {
+      ctx.save();
+      ctx.translate(object.x, object.y);
+      ctx.fillStyle = object.target ? '#fff7cc' : 'rgba(92,105,98,.65)';
+      ctx.beginPath(); ctx.arc(0, 0, 24, 0, TAU); ctx.fill();
+      ctx.strokeStyle = object.target ? meta.color : 'rgba(255,255,255,.65)'; ctx.lineWidth = 2; ctx.stroke();
+      ctx.fillStyle = object.target ? meta.ink : '#fff';
+      ctx.font = '600 17px "Songti SC", serif';
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(object.target ? mini.game.targetGlyph : mini.game.obstacleGlyph, 0, 1);
+      ctx.restore();
+    });
+    ctx.save();
+    ctx.translate(mini.playerX, 475);
+    ctx.fillStyle = 'rgba(36,62,60,.16)';
+    ctx.beginPath(); ctx.ellipse(0, 42, 50, 12, 0, 0, TAU); ctx.fill();
+    ctx.fillStyle = meta.color;
+    ctx.beginPath(); ctx.moveTo(-48, 5); ctx.lineTo(48, 5); ctx.lineTo(28, 45); ctx.lineTo(-28, 45); ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = '#fff'; ctx.lineWidth = 3; ctx.stroke();
+    ctx.fillStyle = '#fff'; ctx.font = '600 21px "Songti SC", serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(mini.game.playerGlyph, 0, 26);
+    ctx.restore();
+    ctx.fillStyle = meta.ink;
+    ctx.font = '600 12px "PingFang SC", sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('左右移动 · 点击 / 拖动也可以', MINI.width / 2, 540);
+    miniFlashText(ctx, mini);
+  }
+
+  function drawSequence(ctx, mini) {
+    const meta = DATA.seasons[mini.term.season];
+    drawMiniBackdrop(ctx, mini);
+    mini.buttons = [];
+    ctx.fillStyle = meta.ink;
+    ctx.font = '600 15px "PingFang SC", sans-serif';
+    ctx.textAlign = 'center';
+    const status = mini.phase === 'show' ? '看一遍顺序…' : '轮到你了，按顺序点击';
+    ctx.fillText(status, MINI.width / 2, 58);
+    const gap = 24;
+    const tileW = 170;
+    const total = mini.game.symbols.length * tileW + (mini.game.symbols.length - 1) * gap;
+    mini.game.symbols.forEach((symbol, index) => {
+      const x = MINI.width / 2 - total / 2 + index * (tileW + gap);
+      const y = 175;
+      const active = mini.phase === 'show' && mini.currentFlash === index && mini.flashTimer > 0;
+      const used = mini.input.includes(index);
+      roundedRect(ctx, x, y, tileW, 135, 24);
+      ctx.fillStyle = active ? meta.color : used ? meta.pale : 'rgba(255,255,255,.82)';
+      ctx.fill();
+      ctx.strokeStyle = active ? '#fff' : meta.color;
+      ctx.lineWidth = active ? 5 : 2;
+      ctx.stroke();
+      ctx.fillStyle = active ? '#fff' : meta.ink;
+      ctx.font = '600 43px "Songti SC", serif';
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(symbol.glyph, x + tileW / 2, y + 55);
+      ctx.font = '600 11px "PingFang SC", sans-serif';
+      ctx.fillText(symbol.name, x + tileW / 2, y + 104);
+      ctx.fillStyle = active ? 'rgba(255,255,255,.7)' : 'rgba(45,67,51,.28)';
+      ctx.font = '600 10px "PingFang SC", sans-serif';
+      ctx.fillText(String(index + 1), x + tileW / 2, y + 126);
+      mini.buttons.push({ x, y, w: tileW, h: 135, index });
+    });
+    ctx.fillStyle = meta.ink;
+    ctx.font = '600 14px "PingFang SC", sans-serif';
+    ctx.fillText(`记忆进度 ${mini.input.length} / ${mini.game.sequence.length}`, MINI.width / 2, 365);
+    const dotGap = 18;
+    const dotsW = mini.game.sequence.length * dotGap;
+    mini.game.sequence.forEach((_, index) => {
+      const x = MINI.width / 2 - dotsW / 2 + index * dotGap;
+      ctx.fillStyle = mini.input.length > index ? meta.color : 'rgba(45,67,51,.16)';
+      ctx.beginPath(); ctx.arc(x, 395, 5, 0, TAU); ctx.fill();
+    });
+    miniFlashText(ctx, mini);
+  }
+
+  function drawMiniCompletion(ctx, mini) {
+    ctx.save();
+    ctx.fillStyle = 'rgba(255,253,244,.84)';
+    ctx.fillRect(0, 0, MINI.width, MINI.height);
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    if (mini.failed) {
+      ctx.fillStyle = DATA.seasons[mini.term.season].ink;
+      ctx.font = '500 52px "Songti SC", serif';
+      ctx.fillText(mini.failedMessage || '再来一次', MINI.width / 2, 245);
+      ctx.font = '600 18px "PingFang SC", sans-serif';
+      ctx.fillStyle = '#7a857b';
+      ctx.fillText('点击画面或按空格重试', MINI.width / 2, 315);
+    } else if (mini.finished) {
+      ctx.fillStyle = DATA.seasons[mini.term.season].ink;
+      ctx.font = '500 54px "Songti SC", serif';
+      ctx.fillText(`${mini.term.custom} · 完成`, MINI.width / 2, 230);
+      ctx.fillStyle = '#e0a728';
+      ctx.font = '600 42px "Songti SC", serif';
+      ctx.fillText(`${'★'.repeat(mini.stars)}${'☆'.repeat(3 - mini.stars)}`, MINI.width / 2, 305);
+      ctx.fillStyle = '#6c786e';
+      ctx.font = '600 17px "PingFang SC", sans-serif';
+      ctx.fillText(mini.term.culture, MINI.width / 2, 375);
+    }
+    ctx.restore();
+  }
+
+  function drawMini(mini) {
+    const ctx = miniContext();
+    if (mini.type === 'collect') drawCollect(ctx, mini);
+    else if (mini.type === 'rhythm') drawRhythm(ctx, mini);
+    else if (mini.type === 'timing') drawTiming(ctx, mini);
+    else if (mini.type === 'sort') drawSort(ctx, mini);
+    else if (mini.type === 'path') drawPath(ctx, mini);
+    else drawSequence(ctx, mini);
+    if (mini.finished || mini.failed) drawMiniCompletion(ctx, mini);
+    updateMiniProgress(mini);
+  }
+
+  function updateMiniProgress(mini) {
+    let text = '';
+    if (mini.type === 'collect') text = `${mini.collected} / ${mini.targetCount}`;
+    else if (mini.type === 'rhythm') text = `命中 ${mini.goodHits} / ${mini.beats.length}`;
+    else if (mini.type === 'timing') text = `回合 ${Math.min(mini.round + 1, mini.game.rounds)} / ${mini.game.rounds}`;
+    else if (mini.type === 'sort') text = `${Math.min(mini.index, mini.game.items.length)} / ${mini.game.items.length}`;
+    else if (mini.type === 'path') text = `${mini.collected} / ${mini.targetCount} · ${Math.round(mini.progress * 100)}%`;
+    else if (mini.type === 'sequence') text = mini.phase === 'show' ? '记忆顺序' : `${mini.input.length} / ${mini.game.sequence.length}`;
+    els.miniProgress.textContent = text;
+  }
+
+  function loopMini(timestamp) {
+    const mini = state.mini;
+    if (!mini) return;
+    const dt = Math.min(.034, Math.max(0, (timestamp - mini.last) / 1000));
+    mini.last = timestamp;
+    if (!mini.finished && !mini.failed) updateMini(mini, dt);
+    else mini.elapsed += dt;
+    drawMini(mini);
+    state.miniFrame = requestAnimationFrame(loopMini);
+  }
+
+  /* --------------------------- Meta / overlay --------------------------- */
+
   function showToast(message) {
-    const toast = $('#toast');
-    toast.textContent = message;
-    toast.classList.add('is-visible');
+    els.toast.textContent = message;
+    els.toast.classList.add('is-visible');
     clearTimeout(state.toastTimer);
-    state.toastTimer = setTimeout(() => toast.classList.remove('is-visible'), 2600);
+    state.toastTimer = setTimeout(() => els.toast.classList.remove('is-visible'), 2600);
+  }
+
+  function isTouchLike() {
+    return window.matchMedia('(pointer: coarse)').matches || window.innerWidth < 900;
   }
 
   function ensureAudio() {
     if (!state.audio) {
-      const AudioContext = window.AudioContext || window.webkitAudioContext;
-      if (!AudioContext) return null;
-      state.audio = new AudioContext();
+      const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+      if (!AudioContextClass) return null;
+      state.audio = new AudioContextClass();
     }
     if (state.audio.state === 'suspended') state.audio.resume();
     return state.audio;
   }
 
-  function tone(frequency, duration, type = 'sine', volume = 0.035, delay = 0) {
+  function tone(frequency, duration, type = 'sine', volume = .025, delay = 0) {
+    if (!state.save.sound) return;
     const context = ensureAudio();
     if (!context) return;
     const oscillator = context.createOscillator();
@@ -2107,255 +1562,240 @@
     const start = context.currentTime + delay;
     oscillator.type = type;
     oscillator.frequency.setValueAtTime(frequency, start);
-    gain.gain.setValueAtTime(0.0001, start);
-    gain.gain.exponentialRampToValueAtTime(volume, start + 0.012);
-    gain.gain.exponentialRampToValueAtTime(0.0001, start + duration);
+    gain.gain.setValueAtTime(.0001, start);
+    gain.gain.exponentialRampToValueAtTime(volume, start + .012);
+    gain.gain.exponentialRampToValueAtTime(.0001, start + duration);
     oscillator.connect(gain);
     gain.connect(context.destination);
     oscillator.start(start);
-    oscillator.stop(start + duration + 0.03);
+    oscillator.stop(start + duration + .03);
   }
 
   function playSound(name) {
-    if (!state.save.settings.sound) return;
-    if (name === 'tick') tone(520, .05, 'sine', .012);
-    else if (name === 'align') tone(720, .08, 'sine', .018);
-    else if (name === 'lock') { tone(440, .08, 'triangle', .02); tone(660, .12, 'triangle', .02, .06); }
-    else if (name === 'hint') tone(360, .16, 'sine', .018);
-    else if (name === 'correct') { tone(523.25, .12, 'sine', .02); tone(659.25, .14, 'sine', .018, .08); }
-    else if (name === 'error') { tone(210, .16, 'triangle', .022); tone(170, .2, 'triangle', .018, .08); }
-    else if (name === 'complete') { [523.25, 659.25, 783.99, 1046.5].forEach((frequency, index) => tone(frequency, .5, 'sine', .02, index * .1)); }
+    if (!state.save.sound) return;
+    if (name === 'open') { tone(520, .12, 'sine', .018); tone(660, .16, 'sine', .015, .08); }
+    else if (name === 'tick') tone(640, .06, 'sine', .012);
+    else if (name === 'correct') { tone(590, .1, 'sine', .016); tone(760, .12, 'sine', .014, .08); }
+    else if (name === 'error') { tone(220, .16, 'triangle', .02); tone(180, .18, 'triangle', .017, .08); }
+    else if (name === 'complete') { [523.25, 659.25, 783.99, 1046.5].forEach((frequency, index) => tone(frequency, .42, 'sine', .014, index * .09)); }
+    else if (name === 'step') tone(300, .025, 'sine', .004);
   }
 
   function toggleSound() {
-    state.save.settings.sound = !state.save.settings.sound;
+    state.save.sound = !state.save.sound;
     persist();
     updateSoundButton();
-    if (state.save.settings.sound) playSound('lock');
-    showToast(state.save.settings.sound ? '观测音效已开启。' : '观测音效已关闭。');
+    if (state.save.sound) playSound('correct');
+    showToast(state.save.sound ? '声音已开启' : '声音已关闭');
   }
 
-  function updateSoundButton() {
-    const button = $('#soundBtn');
-    const enabled = Boolean(state.save.settings.sound);
-    button.classList.toggle('is-muted', !enabled);
-    button.setAttribute('aria-label', enabled ? '关闭声音' : '开启声音');
-    button.setAttribute('aria-pressed', String(enabled));
-  }
-
-  function handleGameAction(action) {
-    const run = state.run;
-    if (!run) return;
-    switch (action) {
-      case 'continue-phase': continuePhase(); break;
-      case 'dial-minus': adjustDial(-5); break;
-      case 'dial-plus': adjustDial(5); break;
-      case 'dial-hint': useDialHint(); break;
-      case 'lock-dial': lockDial(); break;
-      case 'submit-pentads': submitPentadSelection(); break;
-      case 'submit-order': submitOrder(); break;
-      case 'reset-order': resetOrder(); break;
-      case 'submit-evidence': submitEvidence(); break;
-      case 'reset-chain': resetChain(); break;
-      case 'submit-chain': submitChain(); break;
-      case 'submit-trial-truth': submitTrialTruth(); break;
-      default: break;
+  function maybeShowChapter(season) {
+    if (!seasonComplete(season) || state.save.chapterCelebrated[season]) return;
+    state.save.chapterCelebrated[season] = true;
+    persist();
+    const meta = DATA.seasons[season];
+    const seasonStarCount = seasonTerms(season).reduce((sum, term) => sum + (state.save.stations[term.id]?.stars || 0), 0);
+    const index = SEASON_ORDER.indexOf(season);
+    els.chapterSeal.textContent = meta.name;
+    els.chapterKicker.textContent = meta.title;
+    els.chapterTitle.textContent = '这一季的节气碑都亮了';
+    els.chapterStars.textContent = `${'★'.repeat(Math.floor(seasonStarCount / 6))}  ${seasonStarCount} / 18 星`;
+    els.chapterCopy.textContent = `${meta.subtitle}。你完成了 ${meta.name}季的全部 6 个习俗小游戏。`;
+    if (index < SEASON_ORDER.length - 1) {
+      els.nextSeasonBtn.textContent = `前往${DATA.seasons[SEASON_ORDER[index + 1]].name}之章`;
+      els.nextSeasonBtn.dataset.next = SEASON_ORDER[index + 1];
+    } else {
+      els.nextSeasonBtn.textContent = '展开四季总卷';
+      els.nextSeasonBtn.dataset.next = 'final';
     }
+    els.chapterOverlay.hidden = false;
+    playSound('complete');
+  }
+
+  function showFinal() {
+    els.chapterOverlay.hidden = true;
+    els.finalOverlay.hidden = false;
+    els.finalScore.textContent = `24 / 24 节气碑 · ${totalStars()} / 72 星`;
+    playSound('complete');
+  }
+
+  function resetAndReplay() {
+    state.save = defaultSave();
+    persist();
+    els.finalOverlay.hidden = true;
+    state.season = 'spring';
+    renderHUD();
+    enterWorld('spring');
+    showToast('四季行旅重新开始');
+  }
+
+  /* ------------------------------- Input -------------------------------- */
+
+  function setJoystickFromEvent(event) {
+    const rect = els.joystick.getBoundingClientRect();
+    const dx = event.clientX - (rect.left + rect.width / 2);
+    const dy = event.clientY - (rect.top + rect.height / 2);
+    const max = rect.width * .32;
+    const length = Math.hypot(dx, dy);
+    const scale = length > max ? max / length : 1;
+    const x = dx * scale;
+    const y = dy * scale;
+    state.joystick.x = x / max;
+    state.joystick.y = y / max;
+    els.joystickStick.style.transform = `translate(calc(-50% + ${x}px), calc(-50% + ${y}px))`;
+  }
+
+  function resetJoystick() {
+    state.joystick.x = 0;
+    state.joystick.y = 0;
+    els.joystickStick.style.transform = 'translate(-50%, -50%)';
   }
 
   function bindEvents() {
-    $('#brandHome').addEventListener('click', () => {
-      updateHome();
-      showScreen('home');
+    els.startBtn.addEventListener('click', () => enterWorld(state.season));
+    els.continueBtn.addEventListener('click', () => enterWorld(state.save.currentSeason || state.season));
+    els.menuBtn.addEventListener('click', () => returnToMenu());
+    els.soundBtn.addEventListener('click', toggleSound);
+    els.actionBtn.addEventListener('pointerdown', event => { event.preventDefault(); interact(); });
+    els.miniClose.addEventListener('click', () => closeMini(false));
+    els.staySeasonBtn.addEventListener('click', () => { els.chapterOverlay.hidden = true; });
+    els.nextSeasonBtn.addEventListener('click', () => {
+      const next = els.nextSeasonBtn.dataset.next;
+      els.chapterOverlay.hidden = true;
+      if (next === 'final') showFinal();
+      else if (next) switchSeason(next);
     });
-    $('#startBtn').addEventListener('click', () => {
-      if (state.save.lastRun) resumeLastRun();
-      else showScreen('map');
-    });
-    $('#homeHelpBtn').addEventListener('click', showHelp);
-    $('#helpBtn').addEventListener('click', showHelp);
-    $('#soundBtn').addEventListener('click', toggleSound);
-    $('#gameBackBtn').addEventListener('click', () => {
-      renderMap();
-      showScreen('map');
-    });
-    $('#codexBackBtn').addEventListener('click', () => showScreen('map'));
-    $('#reviewBackBtn').addEventListener('click', () => showScreen('map'));
-    $('#cardBackBtn').addEventListener('click', () => {
-      updateHome();
-      showScreen('home');
-    });
-    $('#downloadCardBtn').addEventListener('click', downloadTravelCard);
-    $('#shareCardBtn').addEventListener('click', copyWorkName);
-    $('#clearReviewBtn').addEventListener('click', () => {
-      if (state.save.mistakes.length) showClearReviewPrompt();
-    });
+    els.replayBtn.addEventListener('click', resetAndReplay);
 
     document.addEventListener('click', event => {
-      const closeControl = event.target.closest('[data-close-modal]');
-      if (closeControl) {
-        closeModal();
+      const menuSeason = event.target.closest('[data-menu-season]');
+      if (menuSeason && !menuSeason.disabled) {
+        state.season = menuSeason.dataset.menuSeason;
+        renderHUD();
+        showToast(`${DATA.seasons[state.season].title} · ${DATA.seasons[state.season].motto}`);
         return;
       }
-
-      const nav = event.target.closest('[data-nav]');
-      if (nav) {
-        const target = nav.dataset.nav;
-        if (target === 'map') renderMap();
-        showScreen(target);
-        return;
-      }
-
       const seasonTab = event.target.closest('[data-season]');
-      if (seasonTab && !seasonTab.disabled) {
-        state.season = seasonTab.dataset.season;
-        renderMap();
-        return;
-      }
-
-      const level = event.target.closest('[data-level]');
-      if (level) {
-        const term = TERM_BY_ID[level.dataset.level];
-        if (!term) return;
-        if (!termUnlocked(term)) {
-          showToast('先完成前一节气，才能接入这条星轨。');
-          return;
-        }
-        startTerm(term.id);
-        return;
-      }
-
-      const trial = event.target.closest('[data-trial]');
-      if (trial && !trial.disabled) {
-        startTrial(trial.dataset.trial);
-        return;
-      }
-
-      const filter = event.target.closest('[data-filter]');
-      if (filter) {
-        state.codexFilter = filter.dataset.filter;
-        renderCodex();
-        return;
-      }
-
-      const travel = event.target.closest('[data-travel-card]');
-      if (travel) {
-        if (completedTermCount() === 24) showScreen('card');
-        else showToast('完成 24 个节气节点后，才能生成完整成果卡。');
-        return;
-      }
-
-      const termChoice = event.target.closest('[data-term-choice]');
-      if (termChoice) {
-        chooseTerm(termChoice.dataset.termChoice);
-        return;
-      }
-
-      const pentad = event.target.closest('[data-pentad]');
-      if (pentad) {
-        togglePentad(pentad.dataset.pentad);
-        return;
-      }
-
-      const order = event.target.closest('[data-order-pick]');
-      if (order) {
-        pickOrderCard(order.dataset.orderPick);
-        return;
-      }
-
-      const evidence = event.target.closest('[data-evidence]');
-      if (evidence) {
-        toggleEvidence(Number(evidence.dataset.evidence));
-        return;
-      }
-
-      const chain = event.target.closest('[data-chain-pick]');
-      if (chain) {
-        pickChainCard(Number(chain.dataset.chainPick));
-        return;
-      }
-
-      const trialOrder = event.target.closest('[data-trial-order]');
-      if (trialOrder) {
-        pickTrialOrder(trialOrder.dataset.trialOrder);
-        return;
-      }
-
-      const trialPentad = event.target.closest('[data-trial-pentad]');
-      if (trialPentad) {
-        pickTrialPentad(trialPentad.dataset.trialPentad);
-        return;
-      }
-
-      const statement = event.target.closest('[data-trial-statement]');
-      if (statement) {
-        toggleTrialStatement(Number(statement.dataset.trialStatement));
-        return;
-      }
-
-      const action = event.target.closest('[data-action]');
-      if (action) {
-        handleGameAction(action.dataset.action);
-        return;
-      }
-
-      const resultAction = event.target.closest('[data-result-action]');
-      if (resultAction) {
-        handleResultAction(resultAction.dataset.resultAction, resultAction);
-        return;
-      }
-
-      const reviewLevel = event.target.closest('[data-review-level]');
-      if (reviewLevel) {
-        const term = TERM_BY_ID[reviewLevel.dataset.reviewLevel];
-        if (term && termUnlocked(term)) startTerm(term.id);
-        return;
-      }
-
-      const modalAction = event.target.closest('[data-modal-action]');
-      if (modalAction) {
-        const value = modalAction.dataset.modalAction;
-        if (value === 'reset') showResetPrompt();
-        else if (value === 'confirm-reset') resetAllProgress();
-        else if (value === 'confirm-clear-review') clearReviewRecords();
-        return;
-      }
+      if (seasonTab && !seasonTab.disabled) switchSeason(seasonTab.dataset.season);
     });
 
     document.addEventListener('keydown', event => {
-      if (event.key === 'Escape') {
-        if ($('#resultOverlay').classList.contains('is-open')) closeResult();
-        else if ($('#modal').classList.contains('is-open')) closeModal();
+      const key = event.key;
+      if (state.mode === 'mini') {
+        if (miniKey(event, key)) event.preventDefault();
+        return;
+      }
+      if (state.mode === 'menu') {
+        if (key === 'Enter') { event.preventDefault(); enterWorld(state.season); }
+        return;
+      }
+      if (state.mode === 'world') {
+        const lower = key.toLowerCase();
+        if (['w', 'a', 's', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright', ' ', 'e'].includes(lower)) event.preventDefault();
+        if (lower === 'w' || lower === 'arrowup') state.keys.w = true;
+        if (lower === 's' || lower === 'arrowdown') state.keys.s = true;
+        if (lower === 'a' || lower === 'arrowleft') state.keys.a = true;
+        if (lower === 'd' || lower === 'arrowright') state.keys.d = true;
+        if (lower === 'arrowup') state.keys.arrowup = true;
+        if (lower === 'arrowdown') state.keys.arrowdown = true;
+        if (lower === 'arrowleft') state.keys.arrowleft = true;
+        if (lower === 'arrowright') state.keys.arrowright = true;
+        if (lower === 'e' || key === ' ') interact();
+        if (key === 'Escape') returnToMenu();
       }
     });
-
-    document.addEventListener('visibilitychange', () => {
-      if (document.visibilityState === 'hidden') persist();
+    document.addEventListener('keyup', event => {
+      const lower = event.key.toLowerCase();
+      if (lower === 'w' || lower === 'arrowup') { state.keys.w = false; state.keys.arrowup = false; }
+      if (lower === 's' || lower === 'arrowdown') { state.keys.s = false; state.keys.arrowdown = false; }
+      if (lower === 'a' || lower === 'arrowleft') { state.keys.a = false; state.keys.arrowleft = false; }
+      if (lower === 'd' || lower === 'arrowright') { state.keys.d = false; state.keys.arrowright = false; }
     });
+
+    const joystickMove = event => {
+      event.preventDefault();
+      setJoystickFromEvent(event);
+    };
+    els.joystick.addEventListener('pointerdown', event => {
+      els.joystick.setPointerCapture(event.pointerId);
+      joystickMove(event);
+    });
+    els.joystick.addEventListener('pointermove', event => { if (event.buttons) joystickMove(event); });
+    els.joystick.addEventListener('pointerup', resetJoystick);
+    els.joystick.addEventListener('pointercancel', resetJoystick);
+
+    els.miniCanvas.addEventListener('pointerdown', miniPointerDown);
+    els.miniCanvas.addEventListener('pointermove', miniPointerMove);
+    els.miniCanvas.addEventListener('pointerup', miniPointerUp);
+    els.miniCanvas.addEventListener('pointercancel', miniPointerUp);
+    window.addEventListener('blur', () => { state.keys = {}; resetJoystick(); });
+    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') persist(); });
+    window.addEventListener('resize', () => {
+      els.touchControls.hidden = !isTouchLike() || state.mode !== 'world';
+      if (state.mode === 'menu') renderMenuSeasons();
+    });
+  }
+
+  /* -------------------------------- Loop -------------------------------- */
+
+  function loop(timestamp) {
+    if (!state.lastTime) state.lastTime = timestamp;
+    const dt = Math.min(.04, Math.max(0, (timestamp - state.lastTime) / 1000));
+    state.lastTime = timestamp;
+    state.weatherTime += dt;
+    if (state.mode === 'menu') {
+      state.menuTime += dt;
+      const meta = DATA.seasons[state.season];
+      state.player.x = meta.start.x;
+      state.player.y = meta.start.y;
+      state.camera.x = clamp(meta.start.x - els.canvas.clientWidth / 2 + Math.sin(state.menuTime * .18) * 80, 0, Math.max(0, WORLD.width - els.canvas.clientWidth));
+      state.camera.y = clamp(meta.start.y - els.canvas.clientHeight / 2 + Math.cos(state.menuTime * .14) * 45, 0, Math.max(0, WORLD.height - els.canvas.clientHeight));
+      state.nearTerm = null;
+    } else if (state.mode === 'world') {
+      updateWorld(dt);
+    }
+    drawWorld(state.weatherTime);
+    state.worldFrame = requestAnimationFrame(loop);
   }
 
   function init() {
-    if (!DATA || !SOLAR) {
-      console.error('游戏数据或太阳黄经模块未加载。');
+    if (!window.JOURNEY_DATA) {
+      console.error('节气数据未加载');
       return;
     }
-    buildAmbient();
-    buildHomeDial();
-    setSeasonTheme('spring');
-    updateSoundButton();
-    updateHome();
+    cacheElements();
+    setupDecorations();
+    setupCanvas();
+    state.save = loadSave();
+    state.season = SEASON_ORDER.includes(state.save.currentSeason) && seasonUnlocked(state.save.currentSeason) ? state.save.currentSeason : 'spring';
+    state.player = { ...DATA.seasons[state.season].start, facing: 'down', moving: false, step: 0 };
+    if (!isTouchLike()) els.touchControls.hidden = true;
+    setSeasonTheme(state.season);
     bindEvents();
-    renderMap();
-    showScreen('home');
-    setInterval(() => {
-      if (state.screen === 'home') updateHome();
-    }, 60000);
-    console.info('节气行旅已就绪：24 节气 / 72 候 / 4 章试炼');
+    renderHUD();
+    returnToMenu();
+    state.lastTime = performance.now();
+    state.worldFrame = requestAnimationFrame(loop);
+    console.info('节气行旅已启动：4 季 × 6 个习俗小游戏');
   }
 
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', init, { once: true });
-  } else {
-    init();
-  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init, { once: true });
+  else init();
+
+  // Read-only test surface for automated smoke tests.
+  window.JourneyDebug = {
+    state,
+    completeCurrentMini: () => { if (state.mini && !state.mini.finished) finishMini(); },
+    showFinalOverlay: () => showFinal(),
+    enterSeason: season => { state.season = season; enterWorld(season); },
+    teleportToTerm: id => {
+      const term = TERM_BY_ID[id];
+      if (!term) return;
+      state.player.x = term.position.x;
+      state.player.y = term.position.y;
+      updateCamera(true);
+      updatePrompt();
+    },
+    getData: () => DATA
+  };
 })();
