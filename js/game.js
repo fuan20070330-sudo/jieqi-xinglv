@@ -675,6 +675,8 @@
     run.wrong += 1;
     playSound('error');
     updateGameHud(run);
+    bumpHud('#precisionValue', '#comboValue');
+    pulseGameFeedback('error', '连击中断');
     checkpointRun(run);
   }
 
@@ -685,12 +687,17 @@
   function awardPhase(run, title, text) {
     run.combo += 1;
     run.bestCombo = Math.max(run.bestCombo, run.combo);
-    run.score = Math.min(1000, run.score + Math.round(phaseBaseScore(run) * run.precision / 100));
+    const gained = Math.round(phaseBaseScore(run) * run.precision / 100);
+    run.score = Math.min(1000, run.score + gained);
     run.awaitingNext = true;
     run.phaseFeedback = { title, text };
     playSound('correct');
+    bumpHud('#scoreValue', '#comboValue');
+    pulseGameFeedback('success', `+${gained}  ·  连击 ×${run.combo}`);
     checkpointRun(run);
-    renderGame();
+    setTimeout(() => {
+      if (state.run === run && run.awaitingNext) renderGame();
+    }, 420);
   }
 
   function renderPhaseComplete(run) {
@@ -749,7 +756,67 @@
 
   function feedbackMarkup(message, correct = false) {
     if (!message) return '';
-    return `<div class="feedback-box is-visible ${correct ? 'is-correct' : 'is-wrong'}">${escapeHTML(message)}</div>`;
+    return `<div class="feedback-box is-visible ${correct ? 'is-correct' : 'is-wrong'}"><span class="feedback-box__pulse"></span>${escapeHTML(message)}</div>`;
+  }
+
+  function shortText(value, max = 28) {
+    const clean = String(value).replace(/^古人的观察记录：/, '');
+    return clean.length > max ? `${clean.slice(0, max)}…` : clean;
+  }
+
+  function pentadSymbol(name) {
+    if (/雁|鸿|燕|鸟|鸠|鹊|雉|鸡|鹰|鵙|鹖|仓庚|戴胜|反舌/.test(name)) return '羽';
+    if (/虫|蛰|蚯蚓|蟋蟀|螳螂|蜩|蝉|萤|蝼蝈|蛙/.test(name)) return '虫';
+    if (/鱼|獭|蛤|蜃/.test(name)) return '渊';
+    if (/桃|桐|萍|草|木|菊|麦|禾|瓜|菜|兰|荔|桑|柳|华|荣/.test(name)) return '木';
+    if (/冰|冻|水|泉|涸|露|霜|雪/.test(name)) return '水';
+    if (/雷|电|雨|风/.test(name)) return '气';
+    if (/鹿|虎|豺|鹰|雉|鼠/.test(name)) return '兽';
+    if (/虹/.test(name)) return '虹';
+    return '候';
+  }
+
+  function evidenceSymbol(value) {
+    if (/太阳|黄经|直射|昼夜|地球|回归线|近日点|远日点|公转/.test(value)) return '日';
+    if (/气温|天气|降水|雷|云|湿度|风|雨|雪|高温|冷空气/.test(value)) return '象';
+    if (/物候|候|虫|鸟|植物|草木|鹿|花|叶|生物|迁徙/.test(value)) return '生';
+    if (/古代|习俗|文化|历法|诗句|传统/.test(value)) return '文';
+    if (/水汽|凝结|凝华|露|霜|冰|物态/.test(value)) return '水';
+    return '证';
+  }
+
+  function chainSymbol(value) {
+    if (/太阳|黄经|直射|回归线|地球/.test(value)) return '日';
+    if (/昼夜|光|热|温|辐射|蓄热|失热/.test(value)) return '光';
+    if (/云|雨|风|水汽|湿|对流|冷空气|气压/.test(value)) return '气';
+    if (/芽|花|鸟|虫|冰|雪|露|霜|叶|雁|草木|鸣|迁徙|蛰/.test(value)) return '候';
+    return '纹';
+  }
+
+  function pulseGameFeedback(kind, text = '') {
+    const panel = $('#gamePanel');
+    if (!panel) return;
+    panel.classList.remove('is-success-pulse', 'is-error-pulse');
+    void panel.offsetWidth;
+    panel.classList.add(kind === 'success' ? 'is-success-pulse' : 'is-error-pulse');
+    setTimeout(() => panel.classList.remove('is-success-pulse', 'is-error-pulse'), 520);
+    if (text) {
+      const pop = document.createElement('div');
+      pop.className = `reward-pop ${kind === 'success' ? 'is-positive' : 'is-negative'}`;
+      pop.textContent = text;
+      panel.appendChild(pop);
+      setTimeout(() => pop.remove(), 900);
+    }
+  }
+
+  function bumpHud(...selectors) {
+    selectors.forEach(selector => {
+      const node = $(selector);
+      if (!node) return;
+      node.classList.remove('hud-pop');
+      void node.offsetWidth;
+      node.classList.add('hud-pop');
+    });
   }
 
   function dialMarkup(run, term) {
@@ -779,7 +846,7 @@
     });
     const aligned = angleDistance(angle, target) <= 4;
     return `
-      <div class="dial-wrap">
+      <div class="dial-wrap ${aligned ? 'is-aligned' : ''}">
         <svg class="dial-svg" viewBox="0 0 420 420" role="img" aria-label="可旋转太阳黄经仪，当前 ${angle} 度，目标 ${target} 度">
           <defs>
             <radialGradient id="sunDialGradient" cx="38%" cy="32%" r="72%">
@@ -809,67 +876,104 @@
         <button class="dial-adjust" data-action="dial-minus" aria-label="黄经减少5度">−</button>
         <strong id="dialAngleText">${Math.round(angle)}°</strong>
         <button class="dial-adjust" data-action="dial-plus" aria-label="黄经增加5度">＋</button>
-        <span>拖动滑杆 · 方向键微调</span>
+        <span>拖动 / 方向键</span>
       </div>
       <input class="dial-range" id="dialRange" type="range" min="0" max="359" step="1" value="${Math.round(angle)}" aria-label="校准太阳黄经角度">
-      <div class="alignment-state ${aligned ? 'is-aligned' : ''}" id="alignmentState"><span class="alignment-state__light"></span><span id="alignmentText">${aligned ? '指针已进入目标刻度' : `还差 ${Math.round(angleDistance(angle, target))}° 对准目标`}</span></div>
     `;
   }
 
   function renderWatchPhase(run, term) {
     const target = mod360(term.longitude);
     const aligned = angleDistance(run.watch.angle, target) <= 4;
-    const declination = SOLAR.solarDeclination(new Date(Date.UTC(2026, 0, 1)));
+    const parts = term.watch.detail.split(' · ');
+    const direct = (parts[0] || '').replace('直射点', '').replace('约', '');
+    const daylight = (parts[1] || '').replace('北半球', '');
     const choices = run.watch.locked ? `
       <div class="term-choice-block">
-        <div class="instruction-card">
-          <span class="instruction-card__label">节气印识别</span>
-          <p>黄经仪已经锁定。请根据观测线索，从四枚节气印中选出当前节点。</p>
+        <div class="choice-prompt">
+          <span class="choice-prompt__seal">锁</span>
+          <div><small>刻度已接入时轮</small><strong>哪枚节气印属于这里？</strong></div>
         </div>
-        <h4>选择节气印</h4>
         <div class="term-choice-grid">
-          ${buildTermOptions(term).map(option => `<button class="term-choice" data-term-choice="${option.id}"><small>${option.season === term.season ? '同章候选' : '跨季候选'}</small><strong>${option.name}</strong></button>`).join('')}
+          ${buildTermOptions(term).map(option => `<button class="term-choice" data-term-choice="${option.id}" aria-label="选择${option.name}">
+            <span class="term-choice__glyph">${option.glyph}</span>
+            <span class="term-choice__copy"><strong>${option.name}</strong><small>${option.pinyin}</small></span>
+          </button>`).join('')}
         </div>
       </div>
     ` : '';
     $('#gamePanel').innerHTML = `
-      <div class="stage-head">
+      <div class="stage-head stage-head--compact">
         <div>
-          <div class="stage-kicker">PHASE 01 · OBSERVE THE SUN</div>
-          <h3>校准黄经仪</h3>
-          <p>拖动日轮指针，让太阳标记对准观测目标。黄经从春分 0° 起沿黄道计量；锁定仪器后，再辨认节气。</p>
+          <div class="stage-kicker">PHASE 01 · OBSERVE</div>
+          <h3>校准日轮</h3>
+          <p>把光点拖进金色目标环。</p>
         </div>
-        <div class="stage-objective"><strong>本段目标</strong>将指针误差控制在 ±4°，并识别 ${term.name} 的黄经节点。</div>
+        <div class="stage-objective"><strong>目标刻度</strong>${target}° · 容差 ±4°</div>
       </div>
       <div class="watch-layout">
         <div class="watch-visual">${dialMarkup(run, term)}</div>
         <div class="watch-readout">
-          <div class="instruction-card instruction-card--accent">
-            <span class="instruction-card__label">今日观测记录 · 北半球</span>
-            <p><strong>${term.watch.cue}</strong><br>${term.watch.detail}</p>
+          <div class="observe-panel">
+            <div class="observe-panel__head"><span>今日观测</span><strong>${term.watch.cue.replace('视黄经 ', '')}</strong></div>
+            <div class="observe-stats">
+              <div class="observe-stat"><span class="observe-stat__glyph">日</span><small>直射点</small><strong>${direct}</strong></div>
+              <div class="observe-stat"><span class="observe-stat__glyph">昼</span><small>昼夜</small><strong>${daylight}</strong></div>
+              <div class="observe-stat"><span class="observe-stat__glyph">序</span><small>节点</small><strong>${String(term.order + 1).padStart(2, '0')}/24</strong></div>
+            </div>
+            <div class="observe-panel__foot"><span>${term.dateHint}</span><span>拖动 / 方向键</span></div>
           </div>
-          <div class="readout-main">
-            <span class="readout-main__cue">${term.watch.cue}</span>
-            <span class="readout-main__detail">${term.astronomy}</span>
-          </div>
-          <div class="readout-matrix">
-            <div class="readout-cell"><span>节气序列</span><strong>${String(term.order + 1).padStart(2, '0')} / 24</strong></div>
-            <div class="readout-cell"><span>公历近似</span><strong>${term.dateHint}</strong></div>
-            <div class="readout-cell"><span>太阳赤纬</span><strong>${term.watch.detail.split(' · ')[0]}</strong></div>
-            <div class="readout-cell"><span>观测地</span><strong>北半球通用</strong></div>
-          </div>
-          <div class="tag-row"><span class="tag">太阳视黄经为近似值</span><span class="tag">正式历算以权威历书为准</span></div>
+          <div class="alignment-state ${aligned ? 'is-aligned' : ''}" id="alignmentState"><span class="alignment-state__light"></span><span id="alignmentText">${aligned ? '光点已进入目标环 · 可以锁定' : `再转 ${Math.round(angleDistance(run.watch.angle, target))}°`}</span></div>
+          ${run.watch.hintShown ? `<div class="clue-whisper">${term.watch.hint}</div>` : ''}
           ${feedbackMarkup(run.watch.message)}
           <div class="phase-actions">
-            <span class="phase-actions__note">${run.watch.hintShown ? term.watch.hint : '卡住时可查看一次校准线索，会扣除 5% 精度。'}</span>
-            ${run.watch.hintShown ? '' : '<button class="btn btn--quiet btn--small" data-action="dial-hint">提示</button>'}
-            <button class="btn btn--primary" data-action="lock-dial" ${aligned ? '' : 'disabled'}>${run.watch.locked ? '黄经已锁定' : '锁定黄经'}</button>
+            <span class="phase-actions__note">${run.watch.locked ? '刻度已锁定。' : '提示会扣除 5% 精度。'}</span>
+            ${run.watch.hintShown || run.watch.locked ? '' : '<button class="btn btn--quiet btn--small" data-action="dial-hint">提示</button>'}
+            <button class="btn btn--primary" data-action="lock-dial" ${aligned ? '' : 'disabled'}>${run.watch.locked ? '已锁定' : '锁定刻度'}</button>
           </div>
         </div>
       </div>
       ${choices}
     `;
     bindDialRange();
+    bindDialPointer();
+  }
+
+  function bindDialPointer() {
+    const svg = $('#gamePanel .dial-svg');
+    if (!svg) return;
+    let dragging = false;
+    const applyPointer = event => {
+      const run = state.run;
+      if (!run || run.type !== 'term') return;
+      const rect = svg.getBoundingClientRect();
+      const dx = event.clientX - (rect.left + rect.width / 2);
+      const dy = event.clientY - (rect.top + rect.height / 2);
+      const angle = mod360(Math.atan2(dx, -dy) * 180 / Math.PI);
+      run.watch.angle = Math.round(angle);
+      updateDialView();
+    };
+    svg.addEventListener('pointerdown', event => {
+      dragging = true;
+      svg.setPointerCapture(event.pointerId);
+      svg.classList.add('is-dragging');
+      applyPointer(event);
+      playSound('tick');
+      event.preventDefault();
+    });
+    svg.addEventListener('pointermove', event => {
+      if (!dragging) return;
+      applyPointer(event);
+      event.preventDefault();
+    });
+    const release = event => {
+      if (!dragging) return;
+      dragging = false;
+      svg.classList.remove('is-dragging');
+      try { svg.releasePointerCapture(event.pointerId); } catch (error) {}
+    };
+    svg.addEventListener('pointerup', release);
+    svg.addEventListener('pointercancel', release);
   }
 
   function bindDialRange() {
@@ -894,10 +998,14 @@
     const range = $('#dialRange');
     const alignment = $('#alignmentState');
     const alignmentText = $('#alignmentText');
+    const dialWrap = $('#gamePanel .dial-wrap');
+    const wasAligned = Boolean(alignment?.classList.contains('is-aligned'));
     if (text) text.textContent = `${Math.round(angle)}°`;
     if (range) range.value = Math.round(angle);
     if (alignment) alignment.classList.toggle('is-aligned', aligned);
-    if (alignmentText) alignmentText.textContent = aligned ? '指针已进入目标刻度' : `还差 ${Math.round(diff)}° 对准目标`;
+    if (dialWrap) dialWrap.classList.toggle('is-aligned', aligned);
+    if (alignmentText) alignmentText.textContent = aligned ? '光点已进入目标环 · 可以锁定' : `再转 ${Math.round(diff)}°`;
+    if (aligned && !wasAligned) playSound('align');
     const needle = $('#gamePanel .dial-svg g[transform]');
     if (needle) needle.setAttribute('transform', `rotate(${angle} 210 210)`);
     const lock = $('[data-action="lock-dial"]');
@@ -955,21 +1063,22 @@
     const ordering = pentad.stage === 'order';
     const stepMarkup = `
       <div class="pentad-step">
-        <span class="is-current">1</span><b>选出三候</b>
-        <span>→</span>
-        <span class="${ordering ? 'is-current' : ''}">2</span><b>按初、二、三候排序</b>
+        <span class="${ordering ? 'is-done' : 'is-current'}">${ordering ? '✓' : '1'}</span><b>找出三候</b>
+        <i></i>
+        <span class="${ordering ? 'is-current' : ''}">2</span><b>排出候序</b>
       </div>
     `;
     let board = '';
     if (!ordering) {
       board = `
-        <div class="pentad-board">
-          ${pentad.options.map(option => {
+        <div class="pentad-board pentad-board--game">
+          ${pentad.options.map((option, index) => {
             const selected = pentad.selection.includes(option.key);
-            return `<button class="pentad-card ${selected ? 'is-selected' : ''}" data-pentad="${option.key}" aria-pressed="${selected}">
-              <span class="pentad-card__tag">候牌 · ${option.correct ? '待校验' : '时令残影'}</span>
+            return `<button class="pentad-card pentad-card--tile ${selected ? 'is-selected' : ''}" data-pentad="${option.key}" aria-pressed="${selected}" aria-label="${option.name}，${option.note}" title="${option.note}">
+              <span class="pentad-card__glyph" aria-hidden="true">${pentadSymbol(option.name)}</span>
+              <span class="pentad-card__tag">物候牌 ${String(index + 1).padStart(2, '0')}</span>
               <strong>${option.name}</strong>
-              <p>${option.note}</p>
+              <p>${shortText(option.note, 16)}</p>
               <span class="pentad-card__check">✓</span>
             </button>`;
           }).join('')}
@@ -982,39 +1091,39 @@
             ${[0,1,2].map(index => {
               const key = pentad.ordered[index];
               const item = key ? pentad.orderPool.find(card => card.key === key) : null;
-              return `<div class="order-slot ${item ? 'is-filled' : ''}"><span class="order-slot__label">${['初候','二候','三候'][index]}</span>${item ? `<strong>${item.name}</strong>` : '<span class="chain-slot__empty">等待候牌</span>'}</div>`;
+              return `<div class="order-slot ${item ? 'is-filled' : ''}"><span class="order-slot__label">${['初候','二候','三候'][index]}</span>${item ? `<span class="order-slot__glyph">${pentadSymbol(item.name)}</span><strong>${item.name}</strong>` : '<span class="chain-slot__empty">空位</span>'}</div>`;
             }).join('')}
           </div>
           <div class="order-card-pool">
-            ${pentad.orderPool.map(card => `<button class="order-card" data-order-pick="${card.key}" ${pentad.ordered.includes(card.key) ? 'disabled' : ''}>${card.name}<small>点击按顺序放入</small></button>`).join('')}
+            ${pentad.orderPool.map(card => `<button class="order-card" data-order-pick="${card.key}" ${pentad.ordered.includes(card.key) ? 'disabled' : ''}><span class="order-card__glyph">${pentadSymbol(card.name)}</span><span><strong>${card.name}</strong><small>点击放入下一格</small></span></button>`).join('')}
           </div>
         </div>
       `;
     }
     $('#gamePanel').innerHTML = `
-      <div class="stage-head">
+      <div class="stage-head stage-head--compact">
         <div>
-          <div class="stage-kicker">PHASE 02 · READ THE PHENOLOGY</div>
-          <h3>重排七十二候</h3>
-          <p>候牌中混入了其他节气的物候。先找出属于 ${term.name} 的三候，再按初候、二候、三候排入观察槽。</p>
+          <div class="stage-kicker">PHASE 02 · READ THE LAND</div>
+          <h3>${ordering ? '排出三候' : '挑出三候'}</h3>
+          <p>${ordering ? '按初候 → 二候 → 三候放入。' : '六张候牌里，只有三张属于本节气。'}</p>
         </div>
-        <div class="stage-objective"><strong>本段目标</strong>${ordering ? '把三枚正确候牌按传统顺序排列。' : '从 6 枚候牌中选出 3 枚正确物候。'}</div>
+        <div class="stage-objective"><strong>候牌</strong>${ordering ? `${pentad.ordered.length} / 3 已就位` : `${pentad.selection.length} / 3 已选择`}</div>
       </div>
       ${stepMarkup}
-      <div class="instruction-card instruction-card--accent">
-        <span class="instruction-card__label">物候档案 · 古代观察记录</span>
-        <p>七十二候是古人长期观察形成的时令记录，不等同现代气象或生物学的定量标准。游戏以传统候名作为文化线索。</p>
+      <div class="micro-brief">
+        <span class="micro-brief__glyph">候</span>
+        <div><strong>${ordering ? '读取候的先后' : '辨认物候的时令'}</strong><small>古代物候记录 · 轻点牌面进行操作</small></div>
+        <div class="selection-pips" aria-hidden="true">${[0,1,2].map(i => `<i class="${(ordering ? pentad.ordered.length : pentad.selection.length) > i ? 'is-filled' : ''}"></i>`).join('')}</div>
       </div>
       ${board}
       ${feedbackMarkup(pentad.message)}
       <div class="phase-actions">
-        <span class="phase-actions__note">${ordering ? '排序错误会让连击归零，但可以重新尝试。' : `已选择 <strong class="pentad-selected-count">${pentad.selection.length}</strong> / 3 枚候牌`}</span>
+        <span class="phase-actions__note">${ordering ? '排错可重来，连击会中断。' : '选错会失去一次连击。'}</span>
         ${ordering ? '<button class="btn btn--quiet btn--small" data-action="reset-order">重排</button>' : ''}
-        <button class="btn btn--primary" data-action="${ordering ? 'submit-order' : 'submit-pentads'}" ${ordering ? (pentad.ordered.length === 3 ? '' : 'disabled') : (pentad.selection.length === 3 ? '' : 'disabled')}>${ordering ? '校准三候' : '确认三候'}</button>
+        <button class="btn btn--primary" data-action="${ordering ? 'submit-order' : 'submit-pentads'}" ${ordering ? (pentad.ordered.length === 3 ? '' : 'disabled') : (pentad.selection.length === 3 ? '' : 'disabled')}>${ordering ? '接通候序' : '确认三候'}</button>
       </div>
     `;
   }
-
   function togglePentad(key) {
     const run = state.run;
     if (!run || run.type !== 'term' || run.pentad.stage !== 'select') return;
@@ -1096,49 +1205,50 @@
   function renderMythPhase(run, term) {
     const myth = run.myth;
     const selectedCount = myth.selected.length;
-    const tilt = selectedCount === 0 ? 0 : selectedCount === 1 ? -2 : 0;
+    const tilt = selectedCount === 0 ? 0 : selectedCount === 1 ? -3 : 0;
     $('#gamePanel').innerHTML = `
-      <div class="stage-head">
+      <div class="stage-head stage-head--compact">
         <div>
-          <div class="stage-kicker">PHASE 03 · WEIGH THE EVIDENCE</div>
-          <h3>校准证据天平</h3>
-          <p>节气误区常来自把天文节点、当地天气、古代物候记录和现代生活经验混在一起。选出最能解释该误区为何不成立的两条证据。</p>
+          <div class="stage-kicker">PHASE 03 · BREAK THE MYTH</div>
+          <h3>击碎误区</h3>
+          <p>挑出两条能拆穿它的证据。</p>
         </div>
-        <div class="stage-objective"><strong>本段目标</strong>从四条材料中选出两条科学证据，让天平回到平衡。</div>
+        <div class="stage-objective"><strong>证据槽</strong>${selectedCount} / 2</div>
       </div>
       <div class="myth-layout">
         <div class="claim-card">
-          <span class="claim-card__label">待辨析命题 · 常见误区</span>
+          <span class="claim-card__label">异常命题</span>
           <blockquote>“${term.myth.claim}”</blockquote>
           <div class="balance-visual">
             <div class="balance-beam" style="--tilt:${tilt}deg"><span class="balance-pan balance-pan--left"></span><span class="balance-pan balance-pan--right"></span></div>
             <div class="balance-base"></div>
-            <div class="balance-caption">${selectedCount === 0 ? '等待放入证据' : selectedCount === 1 ? '天平仍偏向未经验证的判断' : '证据槽已满，等待校准'}</div>
+            <div class="balance-caption">${selectedCount === 0 ? '等待证据' : selectedCount === 1 ? '天平仍在倾斜' : '双证据已就位'}</div>
           </div>
-          <div class="tag-row"><span class="tag">古代记录</span><span class="tag">现代解释</span><span class="tag">生活建议</span></div>
+          <div class="evidence-slots" aria-hidden="true">
+            ${[0,1].map(i => `<span class="evidence-slot ${selectedCount > i ? 'is-filled' : ''}">${selectedCount > i ? '证' : '?'}</span>`).join('')}
+          </div>
         </div>
         <div class="evidence-area">
-          <div class="evidence-head"><h4>可选证据链</h4><span class="evidence-count">已选 ${selectedCount} / 2</span></div>
-          <div class="evidence-grid">
+          <div class="evidence-head"><h4>辨析材料</h4><span class="evidence-count">选中 2 条</span></div>
+          <div class="evidence-grid evidence-grid--tokens">
             ${myth.options.map((option, index) => {
               const selected = myth.selected.includes(index);
-              return `<button class="evidence-card ${selected ? 'is-selected' : ''}" data-evidence="${index}" aria-pressed="${selected}">
-                <span class="evidence-card__tag">${option.tag}</span>
-                <p>${option.text}</p>
+              return `<button class="evidence-card evidence-token ${selected ? 'is-selected' : ''}" data-evidence="${index}" aria-pressed="${selected}" title="${option.text}">
+                <span class="evidence-token__glyph" aria-hidden="true">${evidenceSymbol(option.text)}</span>
+                <span class="evidence-token__copy"><small>材料 ${String(index + 1).padStart(2, '0')}</small><p>${shortText(option.text, 20)}</p></span>
                 <span class="evidence-card__mark">◆</span>
               </button>`;
             }).join('')}
           </div>
           ${feedbackMarkup(myth.message)}
           <div class="phase-actions">
-            <span class="phase-actions__note">误区不等于古代记录本身；要区分“古人如何观察”与“现代如何解释”。</span>
-            <button class="btn btn--primary" data-action="submit-evidence" ${selectedCount === 2 ? '' : 'disabled'}>${myth.attempts > 0 ? '重新校准天平' : '校准天平'}</button>
+            <span class="phase-actions__note">选择错误会中断连击。</span>
+            <button class="btn btn--primary" data-action="submit-evidence" ${selectedCount === 2 ? '' : 'disabled'}>${myth.attempts > 0 ? '再次校准' : '落下审判'}</button>
           </div>
         </div>
       </div>
     `;
   }
-
   function toggleEvidence(index) {
     const run = state.run;
     if (!run || run.type !== 'term') return;
@@ -1203,42 +1313,83 @@
   function renderChainPhase(run, term) {
     const chain = run.chain;
     const placed = chain.placed;
+    const slotNames = ['日位', '传导', '响应', '显候'];
     $('#gamePanel').innerHTML = `
-      <div class="stage-head">
+      <div class="stage-head stage-head--compact">
         <div>
-          <div class="stage-kicker">PHASE 04 · REPAIR THE CAUSAL CHAIN</div>
-          <h3>接通物候因果链</h3>
-          <p>把打乱的事件牌依次放入四个刻度：太阳位置 → 直射与昼夜 → 地表和大气响应 → 物候表现。接通后，本节气时钟恢复运行。</p>
+          <div class="stage-kicker">PHASE 04 · REPAIR</div>
+          <h3>接通时轮</h3>
+          <p>把事件牌拖入正确刻度，让能量流到物候。</p>
         </div>
-        <div class="stage-objective"><strong>本段目标</strong>按因果顺序排列四条事件，完成 ${term.name} 的时轮修复。</div>
+        <div class="stage-objective"><strong>回路</strong>${placed.length} / 4 已接通</div>
       </div>
       <div class="chain-board">
         ${[0,1,2,3].map(index => {
           const item = placed[index] !== undefined ? chain.pool.find(card => card.index === placed[index]) : null;
-          return `<div class="chain-slot ${item ? 'is-filled' : ''}"><span class="chain-slot__num">0${index + 1}</span>${item ? `<p>${item.text}</p>` : '<span class="chain-slot__empty">等待事件牌</span>'}</div>`;
+          return `<div class="chain-slot ${item ? 'is-filled' : ''}" data-chain-slot="${index}" aria-label="第${index + 1}段 ${slotNames[index]}">
+            <div class="chain-slot__head"><span class="chain-slot__num">0${index + 1}</span><small>${slotNames[index]}</small></div>
+            ${item ? `<span class="chain-slot__glyph" aria-hidden="true">${chainSymbol(item.text)}</span><p>${shortText(item.text, 24)}</p>` : '<span class="chain-slot__empty">拖入事件牌</span>'}
+          </div>`;
         }).join('')}
       </div>
-      <div class="instruction-card"><span class="instruction-card__label">可用事件牌</span><p>点击事件牌会将其放入下一个空刻度。若顺序有误，可清空重排。</p></div>
+      <div class="micro-brief micro-brief--chain">
+        <span class="micro-brief__glyph">流</span>
+        <div><strong>能量从太阳出发</strong><small>拖动牌面入槽，或用点击依次接通</small></div>
+      </div>
       <div class="chain-pool">
-        ${chain.pool.map(card => `<button class="chain-card" data-chain-pick="${card.index}" ${placed.includes(card.index) ? 'disabled' : ''}><span class="chain-card__index">${String(card.index + 1).padStart(2, '0')}</span>${card.text}</button>`).join('')}
+        ${chain.pool.map(card => `<button class="chain-card" data-chain-pick="${card.index}" data-chain-drag="${card.index}" draggable="true" ${placed.includes(card.index) ? 'disabled' : ''}><span class="chain-card__glyph" aria-hidden="true">${chainSymbol(card.text)}</span><span title="${card.text}">${shortText(card.text, 28)}</span></button>`).join('')}
       </div>
       ${feedbackMarkup(chain.message)}
       <div class="phase-actions">
-        <span class="phase-actions__note">${placed.length} / 4 条事件已接入</span>
-        <button class="btn btn--quiet btn--small" data-action="reset-chain" ${placed.length ? '' : 'disabled'}>清空重排</button>
+        <span class="phase-actions__note">${placed.length === 4 ? '回路已填满，等待启动。' : '先接太阳，再让能量传向物候。'}</span>
+        <button class="btn btn--quiet btn--small" data-action="reset-chain" ${placed.length ? '' : 'disabled'}>清空</button>
         <button class="btn btn--primary" data-action="submit-chain" ${placed.length === 4 ? '' : 'disabled'}>启动时轮</button>
       </div>
     `;
+    bindChainDrag();
+  }
+
+  function bindChainDrag() {
+    const run = state.run;
+    if (!run || run.type !== 'term') return;
+    $$('#gamePanel [data-chain-drag]').forEach(card => {
+      card.addEventListener('dragstart', event => {
+        event.dataTransfer.setData('text/plain', card.dataset.chainDrag);
+        event.dataTransfer.effectAllowed = 'move';
+        card.classList.add('is-dragging');
+      });
+      card.addEventListener('dragend', () => card.classList.remove('is-dragging'));
+    });
+    $$('#gamePanel [data-chain-slot]').forEach(slot => {
+      slot.addEventListener('dragover', event => {
+        event.preventDefault();
+        event.dataTransfer.dropEffect = 'move';
+        slot.classList.add('is-drop-target');
+      });
+      slot.addEventListener('dragleave', () => slot.classList.remove('is-drop-target'));
+      slot.addEventListener('drop', event => {
+        event.preventDefault();
+        slot.classList.remove('is-drop-target');
+        const index = Number(event.dataTransfer.getData('text/plain'));
+        if (Number.isFinite(index)) placeChainCard(index, Number(slot.dataset.chainSlot));
+      });
+    });
+  }
+  function placeChainCard(index, slotIndex) {
+    const run = state.run;
+    if (!run || run.type !== 'term') return;
+    if (run.chain.placed.includes(index) || run.chain.placed.length >= 4) return;
+    const insertion = Math.max(0, Math.min(Number(slotIndex) || 0, run.chain.placed.length));
+    run.chain.placed.splice(insertion, 0, index);
+    run.chain.message = '';
+    playSound('tick');
+    renderChainPhase(run, TERM_BY_ID[run.targetId]);
   }
 
   function pickChainCard(index) {
     const run = state.run;
     if (!run || run.type !== 'term') return;
-    if (run.chain.placed.includes(index) || run.chain.placed.length >= 4) return;
-    run.chain.placed.push(index);
-    run.chain.message = '';
-    playSound('tick');
-    renderChainPhase(run, TERM_BY_ID[run.targetId]);
+    placeChainCard(index, run.chain.placed.length);
   }
 
   function resetChain() {
@@ -1282,9 +1433,9 @@
         <div>
           <div class="stage-kicker">TRIAL 01 · SEASONAL ORBIT</div>
           <h3>重连${meta.name}季星序</h3>
-          <p>六枚节气印被打散。按照太阳视黄经依次增加 15° 的顺序，把它们重新接回星轨。</p>
+          <p>按黄经顺序，把六枚节气印接回星轨。</p>
         </div>
-        <div class="stage-objective"><strong>试炼目标</strong>按节气先后顺序点击 6 枚节气印。</div>
+        <div class="stage-objective"><strong>试炼目标</strong>按顺序点击 6 枚节气印</div>
       </div>
       <div class="trial-brief">
         <div><h4>${trial.name}</h4><p>${trial.subtitle} · 综合检验本章天文、物候与文化。</p></div>
@@ -1334,9 +1485,9 @@
         <div>
           <div class="stage-kicker">TRIAL 02 · PHENOLOGY TRACE</div>
           <h3>让候牌归位</h3>
-          <p>为三个章内节点各找一枚正确候牌。先看高亮节点，再从右侧候牌中选出对应物候。</p>
+          <p>为三个高亮节点各找一枚对应候牌。</p>
         </div>
-        <div class="stage-objective"><strong>试炼目标</strong>完成三组“节气—物候”配对。</div>
+        <div class="stage-objective"><strong>试炼目标</strong>完成 3 组候牌配对</div>
       </div>
       <div class="trial-brief">
         <div><h4>${trial.name}</h4><p>候牌中混入了章外时令残影，需要跨节点辨认。</p></div>
@@ -1397,9 +1548,9 @@
         <div>
           <div class="stage-kicker">TRIAL 03 · SCIENTIFIC REVIEW</div>
           <h3>审校万象记录</h3>
-          <p>以下五条陈述中，有三条符合现代科学解释或对传统材料的使用边界。选出三条，提交本章最终审校。</p>
+          <p>五条陈述中只有三条可靠，请全部找出。</p>
         </div>
-        <div class="stage-objective"><strong>试炼目标</strong>找出三条可靠陈述，封存本章时轮印记。</div>
+        <div class="stage-objective"><strong>试炼目标</strong>找出 3 条可靠陈述</div>
       </div>
       <div class="trial-brief">
         <div><h4>${trial.name}</h4><p>综合检验天文机制、七十二候性质与常见误区。</p></div>
@@ -1968,6 +2119,7 @@
   function playSound(name) {
     if (!state.save.settings.sound) return;
     if (name === 'tick') tone(520, .05, 'sine', .012);
+    else if (name === 'align') tone(720, .08, 'sine', .018);
     else if (name === 'lock') { tone(440, .08, 'triangle', .02); tone(660, .12, 'triangle', .02, .06); }
     else if (name === 'hint') tone(360, .16, 'sine', .018);
     else if (name === 'correct') { tone(523.25, .12, 'sine', .02); tone(659.25, .14, 'sine', .018, .08); }
