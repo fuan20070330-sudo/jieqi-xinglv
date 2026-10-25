@@ -130,6 +130,7 @@ kbd {
 .primary-button:hover { transform: translateY(-2px); box-shadow: 0 17px 34px color-mix(in srgb, var(--season) 35%, transparent); }
 .secondary-button { border: 1px solid color-mix(in srgb, var(--season) 28%, #fff); background: rgba(255,255,255,.62); color: var(--season-ink); }
 .secondary-button:hover { transform: translateY(-2px); background: #fff; }
+.score-rule { margin: 13px 0 0; color: var(--season-ink); font-size: 11px; font-weight: 700; letter-spacing: .04em; }
 .menu-controls { display: flex; flex-wrap: wrap; gap: 10px 18px; margin-top: 18px; color: #6d7b70; font-size: 11px; }
 .menu-controls span { display: inline-flex; align-items: center; gap: 6px; }
 .menu-seasons { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; max-width: 590px; margin-top: 28px; }
@@ -535,7 +536,9 @@ window.JOURNEY_DATA = {
   const SEASON_ORDER = ['spring', 'summer', 'autumn', 'winter'];
   const TERMS = DATA.terms;
   const TERM_BY_ID = Object.fromEntries(TERMS.map(term => [term.id, term]));
-  const SAVE_KEY = 'jieqi-journey-save-v2';
+  const SAVE_KEY = 'jieqi-journey-save-v3';
+  const SAVE_SCHEMA_VERSION = 3;
+  const LEGACY_SAVE_KEYS = ['jieqi-journey-save-v2', 'jieqi-journey-save-v1'];
   const WORLD = { width: 1900, height: 1200 };
   const MINI = { width: 960, height: 560 };
   const $ = (selector, root = document) => root.querySelector(selector);
@@ -569,6 +572,8 @@ window.JOURNEY_DATA = {
 
   function defaultSave() {
     return {
+      schemaVersion: SAVE_SCHEMA_VERSION,
+      starsMode: 'best',
       version: DATA.version,
       stations: {},
       currentSeason: 'spring',
@@ -578,16 +583,47 @@ window.JOURNEY_DATA = {
     };
   }
 
+  function normalizeStars(value) {
+    const number = Number(value);
+    if (!Number.isFinite(number)) return 0;
+    return clamp(Math.floor(number), 0, 3);
+  }
+
+  function normalizeStationRecord(record) {
+    if (!record || typeof record !== 'object') return null;
+    const complete = Boolean(record.complete);
+    return {
+      complete,
+      stars: complete ? normalizeStars(record.stars) : 0,
+      bestScore: Math.max(0, Number(record.bestScore) || 0),
+      lastScore: Math.max(0, Number(record.lastScore) || 0),
+      lastStars: complete ? normalizeStars(record.lastStars ?? record.stars) : 0,
+      attempts: Math.max(0, Math.floor(Number(record.attempts) || 0)),
+      completedAt: typeof record.completedAt === 'string' ? record.completedAt : null
+    };
+  }
+
   function loadSave() {
     const fallback = defaultSave();
     try {
       const raw = localStorage.getItem(SAVE_KEY);
       if (!raw) return fallback;
       const parsed = JSON.parse(raw);
+      const stations = {};
+      if (parsed.stations && typeof parsed.stations === 'object') {
+        for (const [termId, record] of Object.entries(parsed.stations)) {
+          if (!TERM_BY_ID[termId]) continue;
+          const normalized = normalizeStationRecord(record);
+          if (normalized) stations[termId] = normalized;
+        }
+      }
       return {
         ...fallback,
         ...parsed,
-        stations: parsed.stations && typeof parsed.stations === 'object' ? parsed.stations : {},
+        schemaVersion: SAVE_SCHEMA_VERSION,
+        starsMode: 'best',
+        version: DATA.version,
+        stations,
         chapterCelebrated: parsed.chapterCelebrated && typeof parsed.chapterCelebrated === 'object' ? parsed.chapterCelebrated : {}
       };
     } catch (error) {
@@ -596,6 +632,8 @@ window.JOURNEY_DATA = {
   }
 
   function persist() {
+    state.save.schemaVersion = SAVE_SCHEMA_VERSION;
+    state.save.starsMode = 'best';
     state.save.updatedAt = new Date().toISOString();
     try { localStorage.setItem(SAVE_KEY, JSON.stringify(state.save)); } catch (error) { /* local file mode may restrict storage */ }
   }
@@ -623,8 +661,13 @@ window.JOURNEY_DATA = {
     return completedCount(season) === 6;
   }
 
+  function stationBestStars(termId) {
+    const record = state.save.stations[termId];
+    return record?.complete ? normalizeStars(record.stars) : 0;
+  }
+
   function seasonStars(season) {
-    return seasonTerms(season).reduce((sum, term) => sum + (Number(state.save.stations[term.id]?.stars) || 0), 0);
+    return seasonTerms(season).reduce((sum, term) => sum + stationBestStars(term.id), 0);
   }
 
   function seasonGatePassed(season) {
@@ -641,7 +684,11 @@ window.JOURNEY_DATA = {
   }
 
   function totalStars() {
-    return Object.values(state.save.stations).reduce((sum, record) => sum + (Number(record.stars) || 0), 0);
+    return TERMS.reduce((sum, term) => sum + stationBestStars(term.id), 0);
+  }
+
+  function hasProgress() {
+    return Object.values(state.save.stations).some(record => record?.complete || normalizeStars(record?.stars) > 0);
   }
 
   function allSeasonsComplete() {
@@ -660,7 +707,7 @@ window.JOURNEY_DATA = {
       menu: $('#menu'),
       menuBtn: $('#menuBtn'),
       startBtn: $('#startBtn'),
-      continueBtn: $('#continueBtn'),
+      resetBtn: $('#resetBtn'),
       menuSeasons: $('#menuSeasons'),
       seasonTabs: $('#seasonTabs'),
       stationCount: $('#stationCount'),
@@ -819,8 +866,9 @@ window.JOURNEY_DATA = {
     els.worldHelp.hidden = true;
     els.prompt.hidden = true;
     renderHUD();
-    els.continueBtn.hidden = Object.keys(state.save.stations).length === 0;
-    els.startBtn.textContent = Object.keys(state.save.stations).length ? '重新进入四季' : '开始行旅';
+    const progressExists = hasProgress();
+    els.resetBtn.hidden = !progressExists;
+    els.startBtn.textContent = progressExists ? '继续行旅' : '开始行旅';
   }
 
   function switchSeason(season) {
@@ -1290,9 +1338,11 @@ window.JOURNEY_DATA = {
     state.nearTerm = term;
     const key = $('.interaction-prompt__key', els.prompt);
     if (term) {
-      const complete = Boolean(stationRecord(term.id)?.complete);
-      els.promptLabel.textContent = '靠近节气碑';
-      els.nearStationName.textContent = `${term.name} · ${term.custom}${complete ? ' · 重玩' : ''}`;
+      const record = stationRecord(term.id);
+      const complete = Boolean(record?.complete);
+      const bestStars = stationBestStars(term.id);
+      els.promptLabel.textContent = complete ? `历史最佳 ${'★'.repeat(bestStars)}` : '靠近节气碑';
+      els.nearStationName.textContent = `${term.name} · ${term.custom}${complete ? ' · 重玩不累加' : ''}`;
       if (key) key.textContent = isTouchLike() ? '入' : 'E';
       els.actionBtn.textContent = '入';
       els.actionBtn.setAttribute('aria-label', `进入${term.name}${term.custom}小游戏`);
@@ -1961,11 +2011,14 @@ window.JOURNEY_DATA = {
     mini.stars = stars; mini.score = score;
     const term = mini.term;
     const previous = state.save.stations[term.id] || {};
+    const bestStars = Math.max(normalizeStars(previous.stars), normalizeStars(stars));
     state.save.stations[term.id] = {
       complete: true,
-      stars: Math.max(previous.stars || 0, stars),
-      bestScore: Math.max(previous.bestScore || 0, score),
+      stars: bestStars,
+      bestScore: Math.max(Number(previous.bestScore) || 0, score),
       lastScore: score,
+      lastStars: normalizeStars(stars),
+      attempts: Math.max(0, Math.floor(Number(previous.attempts) || 0)) + 1,
       completedAt: previous.completedAt || new Date().toISOString()
     };
     persist(); renderHUD();
@@ -3233,7 +3286,16 @@ window.JOURNEY_DATA = {
 
   function bindEvents() {
     els.startBtn.addEventListener('click', () => enterWorld(state.season));
-    els.continueBtn.addEventListener('click', () => enterWorld(state.save.currentSeason || state.season));
+    els.resetBtn.addEventListener('click', () => {
+      if (!window.confirm('清空全部星级、完成记录和章节进度？此操作不可撤销。')) return;
+      state.save = defaultSave();
+      LEGACY_SAVE_KEYS.forEach(key => { try { localStorage.removeItem(key); } catch (error) {} });
+      persist();
+      state.season = 'spring';
+      renderHUD();
+      returnToMenu();
+      showToast('进度已清空，可以重新开始行旅');
+    });
     els.menuBtn.addEventListener('click', () => returnToMenu());
     els.soundBtn.addEventListener('click', toggleSound);
     els.actionBtn.addEventListener('pointerdown', event => { event.preventDefault(); interact(); });
@@ -3386,7 +3448,10 @@ window.JOURNEY_DATA = {
       updateCamera(true);
       updatePrompt();
     },
-    getData: () => DATA
+    getData: () => DATA,
+    getSeasonStars: season => seasonStars(season),
+    getTotalStars: () => totalStars(),
+    getSaveKey: () => SAVE_KEY
   };
 
 
@@ -3669,8 +3734,9 @@ window.JOURNEY_DATA = {
         <p class="menu-lead">走进春、夏、秋、冬四张地图，控制小小观察员，在 24 个节气碑前完成与习俗有关的小游戏。</p>
         <div class="menu-actions">
           <button class="primary-button" id="startBtn">开始行旅</button>
-          <button class="secondary-button" id="continueBtn" hidden>继续行旅</button>
+          <button class="secondary-button" id="resetBtn" hidden>清空进度</button>
         </div>
+        <p class="score-rule">同一关只记录最高星级，重复游玩不会累加。</p>
         <div class="menu-controls">
           <span><kbd>WASD</kbd> 移动</span>
           <span><kbd>E</kbd> / <kbd>空格</kbd> 互动</span>

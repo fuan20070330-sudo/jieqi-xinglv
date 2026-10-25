@@ -122,6 +122,7 @@ kbd {
 .primary-button:hover { transform: translateY(-2px); box-shadow: 0 17px 34px color-mix(in srgb, var(--season) 35%, transparent); }
 .secondary-button { border: 1px solid color-mix(in srgb, var(--season) 28%, #fff); background: rgba(255,255,255,.62); color: var(--season-ink); }
 .secondary-button:hover { transform: translateY(-2px); background: #fff; }
+.score-rule { margin: 13px 0 0; color: var(--season-ink); font-size: 11px; font-weight: 700; letter-spacing: .04em; }
 .menu-controls { display: flex; flex-wrap: wrap; gap: 10px 18px; margin-top: 18px; color: #6d7b70; font-size: 11px; }
 .menu-controls span { display: inline-flex; align-items: center; gap: 6px; }
 .menu-seasons { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; max-width: 590px; margin-top: 28px; }

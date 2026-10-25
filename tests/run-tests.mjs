@@ -93,7 +93,9 @@ assert.ok(!/<link[^>]+href=["']https?:/i.test(html), '不得依赖远程样式')
 const game = read('js/game.js');
 assert.ok(game.includes("'w'") && game.includes("'a'") && game.includes("'s'") && game.includes("'d'"), '应支持 WASD 移动');
 assert.ok(game.includes('localStorage'), '应使用 localStorage 存档');
-assert.ok(game.includes('Math.max(previous.stars') && game.includes('Math.max(previous.bestScore'), '重玩只能刷新最佳星级与最佳分数，不能累加');
+assert.ok(game.includes('Math.max(normalizeStars(previous.stars)') && game.includes('Math.max(Number(previous.bestScore)'), '重玩只能刷新最佳星级与最佳分数，不能累加');
+assert.ok(game.includes("jieqi-journey-save-v3") && game.includes('normalizeStars'), '应使用 v3 存档并归一化每关星级');
+assert.ok(game.includes('lastStars') && game.includes('attempts'), '应区分本局星级与历史最佳星级');
 assert.ok(game.includes('seasonStars(season) > 12'), '进入下一季必须超过 2/3 星数');
 assert.ok(game.includes('mini.started') && game.includes('startMiniGame'), '小游戏必须先展示教程，确认后才开始');
 assert.equal(new Set(data.terms.map(term => term.game.type)).size, 24, '24 个小游戏玩法必须全部不同');
