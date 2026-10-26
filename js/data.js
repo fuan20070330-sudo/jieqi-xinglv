@@ -55,7 +55,7 @@ window.JOURNEY_DATA = {
       game: {
         type: 'sequence', title: '复现稻色', hint: '记住谷粒亮起的顺序，再依次点回去。',
         symbols: [{ name: '稻壳', glyph: '壳' }, { name: '米粒', glyph: '米' }, { name: '谷花', glyph: '花' }, { name: '丰收', glyph: '丰' }],
-        sequence: [0, 2, 1, 3]
+        sequence: [0, 2, 1, 3, 2, 0]
       }
     },
     {
@@ -81,8 +81,13 @@ window.JOURNEY_DATA = {
       position: { x: 1100, y: 880 }, color: '#83c9a0',
       culture: '清明前后踏青、放风筝、插柳，是许多地方共有的春日习俗。',
       game: {
-        type: 'assemble', title: '拼一只纸鸢', hint: '拖动风筝面、竹骨、飘带和线轴，拼到正确轮廓。', pieces: [
-          { name: '风筝面', glyph: '筝' }, { name: '竹骨', glyph: '骨' }, { name: '飘带', glyph: '带' }, { name: '线轴', glyph: '线' }
+        type: 'assemble', title: '拼一只纸鸢', hint: '在 45 秒内依次装上纵向竹骨、横向竹骨、纸面、双飘带和线轴。', timeLimit: 45, pieces: [
+          { name: '纵向竹骨', kind: 'spine' },
+          { name: '横向竹骨', kind: 'spar' },
+          { name: '菱形纸面', kind: 'sail' },
+          { name: '左飘带', kind: 'ribbonLeft' },
+          { name: '右飘带', kind: 'ribbonRight' },
+          { name: '线轴', kind: 'spool' }
         ]
       }
     },
@@ -91,7 +96,7 @@ window.JOURNEY_DATA = {
       position: { x: 620, y: 970 }, color: '#65a777',
       culture: '谷雨前后采制的春茶被称为谷雨茶，部分地区还有赏牡丹等习俗。',
       game: {
-        type: 'sort', title: '谷雨茶分拣', hint: '把单芽、一芽一叶和杂质放入正确茶篓。',
+        type: 'sort', title: '谷雨茶分拣', hint: '在 18 秒内把单芽、一芽一叶和杂质放入正确茶篓。', timeLimit: 18,
         categories: [{ name: '单芽', glyph: '芽' }, { name: '一芽一叶', glyph: '叶' }, { name: '杂质', glyph: '杂' }],
         items: [
           { name: '茶芽', glyph: '芽', cat: 0 }, { name: '嫩叶', glyph: '叶', cat: 1 },
@@ -191,7 +196,7 @@ window.JOURNEY_DATA = {
       position: { x: 1390, y: 510 }, color: '#e0aa3f',
       culture: '秋分曾是传统“祭月节”，后来中秋节俗与秋季祭月传统相互交融。',
       game: {
-        type: 'moon', title: '校准月下礼盘', hint: '点击三层礼盘，让每一圈的月纹都对准上方刻度。',
+        type: 'moon', title: '校准月下礼盘', hint: '三层礼盘会联动旋转；规划顺序，让三圈月纹同时对准上方刻度。',
         rings: 3, steps: 8
       }
     },

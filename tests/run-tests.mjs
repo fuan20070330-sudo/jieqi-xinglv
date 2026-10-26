@@ -96,6 +96,8 @@ assert.ok(game.includes('localStorage'), '应使用 localStorage 存档');
 assert.ok(game.includes('Math.max(normalizeStars(previous.stars)') && game.includes('Math.max(Number(previous.bestScore)'), '重玩只能刷新最佳星级与最佳分数，不能累加');
 assert.ok(game.includes("jieqi-journey-save-v3") && game.includes('normalizeStars'), '应使用 v3 存档并归一化每关星级');
 assert.ok(game.includes('lastStars') && game.includes('attempts'), '应区分本局星级与历史最佳星级');
+assert.ok(game.includes('function drawObjectIcon'), '小游戏物件应使用程序化图形而非纯文字');
+assert.ok(game.includes("piece.kind === expected") && game.includes('function drawKitePart'), '纸鸢应使用有形状与装配顺序的视觉部件');
 assert.ok(game.includes('seasonStars(season) > 12'), '进入下一季必须超过 2/3 星数');
 assert.ok(game.includes('mini.started') && game.includes('startMiniGame'), '小游戏必须先展示教程，确认后才开始');
 assert.equal(new Set(data.terms.map(term => term.game.type)).size, 24, '24 个小游戏玩法必须全部不同');

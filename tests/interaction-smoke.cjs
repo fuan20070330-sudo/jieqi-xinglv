@@ -69,8 +69,37 @@ const H = 560;
 
   const results = {};
 
-  results.duelTutorialBlocked = await open('lixia', 'summer');
+  results.assembleTutorialBlocked = await open('qingming', 'spring');
   let box = await miniBox();
+  const kiteParts = await page.evaluate(() => JourneyDebug.state.mini.pieces.map(piece => ({ ...piece })));
+  const kiteTargets = await page.evaluate(() => JourneyDebug.state.mini.targets.map(target => ({ ...target })));
+  for (const piece of kiteParts) {
+    const target = kiteTargets.find(item => item.kind === piece.kind);
+    await drag(box, { x: piece.x, y: piece.y }, target);
+    await page.waitForTimeout(40);
+  }
+  results.assemble = await page.evaluate(() => ({
+    placed: JourneyDebug.state.mini ? JourneyDebug.state.mini.pieces.filter(piece => piece.placed).length : 6,
+    nextPiece: JourneyDebug.state.mini ? JourneyDebug.state.mini.nextPiece : 6,
+    mistakes: JourneyDebug.state.mini ? JourneyDebug.state.mini.mistakes : 0
+  }));
+  await page.waitForSelector('#miniOverlay', { state: 'hidden', timeout: 6000 });
+  await page.waitForTimeout(380);
+  results.assembleExit = await page.evaluate(() => ({
+    mode: JourneyDebug.state.mode,
+    complete: Boolean(JourneyDebug.state.save.stations.qingming?.complete),
+    overlayHidden: document.querySelector('#miniOverlay').hidden
+  }));
+  if (await page.locator('#chapterOverlay').isVisible()) await page.click('#staySeasonBtn');
+
+  await open('guyu', 'spring');
+  await page.evaluate(() => { JourneyDebug.state.mini.elapsed = JourneyDebug.state.mini.timeLimit + 1; });
+  await page.waitForTimeout(100);
+  results.sortTimeout = await page.evaluate(() => ({ failed: JourneyDebug.state.mini.failed, elapsed: JourneyDebug.state.mini.elapsed }));
+  await cancelAndContinue();
+
+  results.duelTutorialBlocked = await open('lixia', 'summer');
+  box = await miniBox();
   await page.evaluate(() => { JourneyDebug.state.mini.opponentX = 480; JourneyDebug.state.mini.opponentDir = 0; JourneyDebug.state.mini.lockTimer = 0; });
   await click(box, 480, 305);
   results.duel = await page.evaluate(() => ({ successes: JourneyDebug.state.mini.successes, mistakes: JourneyDebug.state.mini.mistakes }));
@@ -110,6 +139,17 @@ const H = 560;
   results.noodle = await page.evaluate(() => ({ traced: JourneyDebug.state.mini.traceIndex, total: JourneyDebug.state.mini.tracePoints.length }));
   await cancelAndContinue();
 
+  await open('xiaoshu', 'summer');
+  const weatherBefore = await page.evaluate(() => ({ index: JourneyDebug.state.mini.weatherIndex, mistakes: JourneyDebug.state.mini.mistakes }));
+  await page.evaluate(() => { JourneyDebug.state.mini.roundClock = JourneyDebug.state.mini.roundLimit + .1; });
+  await page.waitForTimeout(120);
+  results.weatherTimeout = await page.evaluate((before) => ({
+    advanced: JourneyDebug.state.mini.weatherIndex > before.index,
+    mistakes: JourneyDebug.state.mini.mistakes,
+    beforeMistakes: before.mistakes
+  }), weatherBefore);
+  await cancelAndContinue();
+
   await open('liqiu', 'autumn');
   box = await miniBox();
   for (let i = 0; i < 6; i += 1) {
@@ -146,8 +186,8 @@ const H = 560;
 
   await open('qiufen', 'autumn');
   box = await miniBox();
-  await click(box, 480, 231);
-  await click(box, 480, 181); await click(box, 480, 181);
+  await click(box, 480, 231); await click(box, 480, 231);
+  await click(box, 480, 181);
   await click(box, 480, 126); await click(box, 480, 126); await click(box, 480, 126);
   results.moon = await page.evaluate(() => ({ offsets: JourneyDebug.state.mini.offsets.slice(), finishAt: JourneyDebug.state.mini.finishAt }));
   await cancelAndContinue();
@@ -173,6 +213,11 @@ const H = 560;
   await cancelAndContinue();
 
   const failures = [];
+  if (!results.assembleTutorialBlocked) failures.push('纸鸢拼装教程开始前互动未被阻止');
+  if (results.assemble.placed !== 6 || results.assemble.nextPiece !== 6) failures.push('纸鸢六个视觉部件未全部拼上');
+  if (results.assembleExit.mode !== 'world' || !results.assembleExit.complete || !results.assembleExit.overlayHidden) failures.push('纸鸢完成后未退出或未记录完成');
+  if (!results.sortTimeout.failed) failures.push('谷雨分拣超时未触发重试');
+  if (!results.weatherTimeout.advanced || results.weatherTimeout.mistakes <= results.weatherTimeout.beforeMistakes) failures.push('小暑天气反应超时未判错推进');
   if (!results.duelTutorialBlocked) failures.push('教程开始前互动未被阻止');
   if (results.duel.successes < 1) failures.push('斗蛋未命中');
   if (results.pump.strokes < 8) failures.push('水车未完成八次交替');

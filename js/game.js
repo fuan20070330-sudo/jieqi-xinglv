@@ -943,6 +943,7 @@
       mini.index = 0;
       mini.correct = 0;
       mini.lockTimer = 0;
+      mini.timeLimit = mini.game.timeLimit || 20;
     } else if (mini.type === 'path') {
       mini.progress = 0;
       mini.playerX = MINI.width / 2;
@@ -960,16 +961,29 @@
       mini.currentFlash = -1;
       mini.input = [];
     } else if (mini.type === 'assemble') {
-      mini.pieces = mini.game.pieces.map((piece, index) => ({ ...piece, index, x: 130 + index * 225, y: 455, placed: false }));
+      mini.pieces = mini.game.pieces.map((piece, index) => ({ ...piece, index, x: 90 + index * 156, y: 468, placed: false }));
       mini.dragging = null;
       mini.dragX = 0;
       mini.dragY = 0;
-      mini.targets = [{ x: 480, y: 170, label: '风筝面' }, { x: 480, y: 268, label: '竹骨' }, { x: 335, y: 336, label: '飘带' }, { x: 625, y: 336, label: '线轴' }];
+      mini.targets = [
+        { kind: 'spine', x: 480, y: 235 },
+        { kind: 'spar', x: 480, y: 235 },
+        { kind: 'sail', x: 480, y: 235 },
+        { kind: 'ribbonLeft', x: 408, y: 360 },
+        { kind: 'ribbonRight', x: 552, y: 360 },
+        { kind: 'spool', x: 760, y: 430 }
+      ];
+      mini.assembleOrder = ['spine', 'spar', 'sail', 'ribbonLeft', 'ribbonRight', 'spool'];
+      mini.nextPiece = 0;
+      mini.timeLimit = mini.game.timeLimit || 45;
     } else if (mini.type === 'weather') {
       mini.round = 0;
       mini.weatherPattern = [1, 0, 1, 1, 0, 0];
       mini.weatherIndex = 0;
       mini.lockTimer = 0;
+      mini.roundClock = 0;
+      mini.roundLimit = 2.4;
+      mini.finishAt = null;
     } else if (mini.type === 'fold') {
       mini.round = 0;
       mini.folding = false;
@@ -1039,10 +1053,10 @@
       mini.velocity = 0;
       mini.hits = 0;
       mini.rockRows = [
-        { progress: .24, x: 280, hit: false },
-        { progress: .45, x: 680, hit: false },
-        { progress: .66, x: 390, hit: false },
-        { progress: .83, x: 620, hit: false }
+        { progress: .24, x: 305, hit: false },
+        { progress: .45, x: 500, hit: false },
+        { progress: .66, x: 650, hit: false },
+        { progress: .83, x: 380, hit: false }
       ].slice(0, mini.game.rocks || 4);
     } else if (mini.type === 'dew') {
       const count = mini.game.drops || 8;
@@ -1056,7 +1070,7 @@
       mini.caught = 0;
       mini.respawnIndex = 0;
     } else if (mini.type === 'moon') {
-      mini.offsets = [1, 2, 3];
+      mini.offsets = [3, 6, 4];
       mini.rotations = 1;
       mini.finishAt = null;
     } else if (mini.type === 'climb') {
@@ -1334,16 +1348,23 @@
     }
     if (mini.type === 'assemble' && mini.dragging !== null) {
       const piece = mini.pieces[mini.dragging];
-      const target = mini.targets.find(item => Math.abs(item.x - mini.pointerX) < 76 && Math.abs(item.y - mini.pointerY) < 76);
-      if (target && target.label === piece.name) {
+      const target = mini.targets.find(item => item.kind === piece.kind && Math.abs(item.x - mini.pointerX) < 92 && Math.abs(item.y - mini.pointerY) < 92);
+      const expected = mini.assembleOrder[mini.nextPiece];
+      if (target && piece.kind === expected) {
         piece.placed = true;
-        mini.flash = '拼上了';
+        mini.nextPiece += 1;
+        mini.flash = '装好了';
         mini.flashTimer = .3;
         playSound('tick');
         if (mini.pieces.every(item => item.placed)) finishMini();
+      } else if (target) {
+        mini.mistakes += 1;
+        mini.flash = '按竹骨、纸面、尾线的顺序';
+        mini.flashTimer = .5;
+        playSound('error');
       } else {
         mini.mistakes += 1;
-        mini.flash = '位置不对';
+        mini.flash = '还没对准';
         mini.flashTimer = .3;
         playSound('error');
       }
@@ -1497,6 +1518,11 @@
     mini.closeTimer = setTimeout(() => { if (state.mini === mini) closeMini(true); }, 1500);
   }
 
+  function updateAssemble(mini, dt) {
+    if (mini.failed || mini.finished) return;
+    if (mini.elapsed > mini.timeLimit) failMini('纸鸢还没装好，再试一次');
+  }
+
   function updateCollect(mini, dt) {
     if (mini.failed || mini.finished) return;
     if (mini.elapsed > mini.timeLimit) { failMini('时间到了，再试一次'); return; }
@@ -1597,6 +1623,7 @@
 
   function updateSort(mini, dt) {
     if (mini.lockTimer > 0) mini.lockTimer -= dt;
+    if (mini.elapsed > mini.timeLimit) { failMini('分拣超时，再试一次'); return; }
     if (mini.index >= mini.game.items.length && mini.lockTimer <= 0) finishMini();
   }
 
@@ -1757,6 +1784,7 @@
         mini.flash = '触礁了，点岸边调流';
         mini.flashTimer = .45;
         playSound('error');
+        if (mini.hits >= 3) { failMini('触礁三次，河灯熄灭，再试一次'); return; }
       }
     });
     if (mini.progress >= 1 && !mini.finishAt) mini.finishAt = mini.elapsed + .55;
@@ -1796,9 +1824,10 @@
     const mini = state.mini;
     if (!mini || mini.type !== 'moon' || mini.finished || mini.finishAt) return;
     const steps = mini.game.steps || 8;
-    mini.offsets[index] = (mini.offsets[index] + steps - 1) % steps;
+    const linkedRings = index === 0 ? [0, 1] : index === 1 ? [0, 1, 2] : [1, 2];
+    linkedRings.forEach(ring => { mini.offsets[ring] = (mini.offsets[ring] + steps - 1) % steps; });
     mini.rotations += 1;
-    mini.flash = ['内圈', '中圈', '外圈'][index] + '校准一格';
+    mini.flash = ['内圈', '中圈', '外圈'][index] + '带动相邻礼盘';
     mini.flashTimer = .3;
     playSound('tick');
     if (mini.offsets.every(offset => offset === 0)) {
@@ -1900,6 +1929,120 @@
     ctx.restore();
   }
 
+  function drawObjectIcon(ctx, name, x, y, size = 64, tone = null) {
+    const label = String(name || '');
+    const scale = size / 64;
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.scale(scale, scale);
+    ctx.lineJoin = 'round';
+    ctx.lineCap = 'round';
+    const outline = 'rgba(67,79,67,.34)';
+    if (/春饼/.test(label)) {
+      ctx.fillStyle = '#e8b85e'; ctx.beginPath(); ctx.ellipse(0, 4, 28, 21, -.12, 0, TAU); ctx.fill();
+      ctx.strokeStyle = '#a87634'; ctx.lineWidth = 2; ctx.stroke();
+      ctx.strokeStyle = 'rgba(255,244,196,.8)'; ctx.beginPath(); ctx.arc(-7, 1, 14, -.8, 1.8); ctx.stroke();
+    } else if (/萝卜/.test(label)) {
+      ctx.fillStyle = '#f2a45c'; ctx.beginPath(); ctx.moveTo(-9, -8); ctx.quadraticCurveTo(16, 8, 3, 31); ctx.quadraticCurveTo(-16, 24, -9, -8); ctx.fill();
+      ctx.strokeStyle = outline; ctx.stroke();
+      ctx.strokeStyle = '#5f9b58'; ctx.lineWidth = 5;
+      [-10, 0, 10].forEach((dx, i) => { ctx.beginPath(); ctx.moveTo(dx * .4, -12); ctx.quadraticCurveTo(dx, -25 - i * 2, dx + 7, -30); ctx.stroke(); });
+    } else if (/韭/.test(label)) {
+      ctx.strokeStyle = '#8aae4f'; ctx.lineWidth = 5;
+      [-13, 0, 13].forEach((dx, i) => { ctx.beginPath(); ctx.moveTo(dx * .3, 28); ctx.quadraticCurveTo(dx, -4, dx + (i - 1) * 7, -30); ctx.stroke(); });
+      ctx.strokeStyle = '#d5df78'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(-8, 26); ctx.lineTo(8, 26); ctx.stroke();
+    } else if (/石|礁/.test(label)) {
+      ctx.fillStyle = '#77837e'; ctx.beginPath(); ctx.moveTo(-27, 21); ctx.lineTo(-20, -9); ctx.lineTo(-4, -25); ctx.lineTo(22, -12); ctx.lineTo(29, 17); ctx.lineTo(10, 27); ctx.lineTo(-14, 27); ctx.closePath(); ctx.fill();
+      ctx.strokeStyle = 'rgba(255,255,255,.35)'; ctx.lineWidth = 3; ctx.stroke();
+    } else if (/枝/.test(label)) {
+      ctx.strokeStyle = '#76543c'; ctx.lineWidth = 6; ctx.beginPath(); ctx.moveTo(-28, 25); ctx.lineTo(24, -24); ctx.stroke();
+      ctx.lineWidth = 4; ctx.beginPath(); ctx.moveTo(-5, 4); ctx.lineTo(5, -18); ctx.moveTo(10, -10); ctx.lineTo(27, -3); ctx.stroke();
+    } else if (/稻壳|米粒|米|谷花|丰收|稻谷|麦穗|油菜籽/.test(label)) {
+      const isWhite = /米粒/.test(label);
+      ctx.strokeStyle = isWhite ? '#c4aa66' : '#be9635'; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.moveTo(0, 28); ctx.quadraticCurveTo(-5, 4, 0, -25); ctx.stroke();
+      ctx.fillStyle = isWhite ? '#fffaf0' : '#e1bb4d';
+      for (let i = 0; i < 7; i += 1) {
+        const yy = -20 + i * 7, side = i % 2 ? 1 : -1;
+        ctx.save(); ctx.translate(side * 7, yy); ctx.rotate(side * .45); ctx.beginPath(); ctx.ellipse(0, 0, 5, 10, 0, 0, TAU); ctx.fill(); ctx.restore();
+      }
+    } else if (/茶|芽|叶/.test(label)) {
+      ctx.fillStyle = tone || '#76a65d'; ctx.beginPath(); ctx.moveTo(-27, 22); ctx.quadraticCurveTo(-4, -35, 29, -20); ctx.quadraticCurveTo(9, 30, -27, 22); ctx.fill();
+      ctx.strokeStyle = '#e9f5d6'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(-22, 18); ctx.quadraticCurveTo(2, 2, 24, -16); ctx.stroke();
+    } else if (/辣椒/.test(label)) {
+      ctx.fillStyle = '#d8543e'; ctx.beginPath(); ctx.moveTo(-19, -15); ctx.bezierCurveTo(7, -24, 25, -2, 18, 20); ctx.bezierCurveTo(10, 34, -4, 22, -8, 6); ctx.bezierCurveTo(-11, -4, -15, -8, -19, -15); ctx.fill();
+      ctx.strokeStyle = '#59884f'; ctx.lineWidth = 5; ctx.beginPath(); ctx.moveTo(-17, -16); ctx.lineTo(-28, -24); ctx.stroke();
+    } else if (/柿|山楂|枸杞|枣/.test(label)) {
+      const color = /枣/.test(label) ? '#823b2e' : /枸杞/.test(label) ? '#c44433' : '#e47832';
+      ctx.fillStyle = color; ctx.beginPath(); ctx.arc(0, 5, 23, 0, TAU); ctx.fill();
+      ctx.fillStyle = '#6a8d4c'; ctx.beginPath(); ctx.ellipse(0, -17, 12, 6, 0, 0, TAU); ctx.fill();
+      ctx.strokeStyle = '#715137'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(0, -22); ctx.lineTo(0, -30); ctx.stroke();
+    } else if (/玉米/.test(label)) {
+      ctx.fillStyle = '#e3b33c'; ctx.beginPath(); ctx.ellipse(0, 2, 15, 29, 0, 0, TAU); ctx.fill();
+      ctx.strokeStyle = 'rgba(130,90,30,.38)'; ctx.lineWidth = 1.5;
+      for (let i = -18; i <= 18; i += 9) { ctx.beginPath(); ctx.moveTo(-12, i); ctx.lineTo(12, i + 3); ctx.stroke(); }
+      ctx.fillStyle = '#79a85d'; ctx.beginPath(); ctx.moveTo(-11, 23); ctx.quadraticCurveTo(-30, 8, -16, -20); ctx.quadraticCurveTo(-3, 3, -2, 26); ctx.fill();
+    } else if (/南瓜|瓜/.test(label)) {
+      ctx.fillStyle = '#df8b35'; ctx.beginPath(); ctx.ellipse(0, 6, 27, 21, 0, 0, TAU); ctx.fill();
+      ctx.strokeStyle = '#f3be69'; ctx.lineWidth = 2;
+      [-13, 0, 13].forEach(dx => { ctx.beginPath(); ctx.ellipse(dx, 5, 10, 21, 0, 0, TAU); ctx.stroke(); });
+      ctx.fillStyle = '#668b4c'; ctx.fillRect(-3, -22, 6, 13);
+    } else if (/书|诗集|画册/.test(label)) {
+      ctx.fillStyle = '#f7e9c9'; ctx.fillRect(-28, -23, 56, 46);
+      ctx.fillStyle = '#6b8ba0'; ctx.fillRect(-28, -23, 10, 46);
+      ctx.strokeStyle = '#9c825d'; ctx.lineWidth = 2; ctx.strokeRect(-28, -23, 56, 46);
+      ctx.beginPath(); ctx.moveTo(-14, -10); ctx.lineTo(20, -10); ctx.moveTo(-14, 0); ctx.lineTo(20, 0); ctx.moveTo(-14, 10); ctx.lineTo(14, 10); ctx.stroke();
+    } else if (/衣|长衫|棉被/.test(label)) {
+      ctx.fillStyle = tone || '#8cb7c8'; roundedRect(ctx, -25, -24, 50, 48, 8); ctx.fill();
+      ctx.strokeStyle = 'rgba(255,255,255,.8)'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(-7, -20); ctx.lineTo(0, 16); ctx.lineTo(7, -20); ctx.stroke();
+    } else if (/豆/.test(label)) {
+      ctx.fillStyle = tone || '#8a9a4b';
+      [[-14, -3], [10, -8], [0, 15]].forEach(([dx, dy], i) => { ctx.save(); ctx.translate(dx, dy); ctx.rotate(i * .6); ctx.beginPath(); ctx.ellipse(0, 0, 13, 8, 0, 0, TAU); ctx.fill(); ctx.restore(); });
+    } else if (/果/.test(label)) {
+      ctx.fillStyle = '#df7a4a'; ctx.beginPath(); ctx.arc(0, 7, 23, 0, TAU); ctx.fill();
+      ctx.fillStyle = '#6b944e'; ctx.beginPath(); ctx.ellipse(3, -17, 10, 6, -.4, 0, TAU); ctx.fill();
+    } else if (/灯|心愿/.test(label)) {
+      ctx.fillStyle = 'rgba(255,213,104,.25)'; ctx.beginPath(); ctx.arc(0, 0, 30, 0, TAU); ctx.fill();
+      ctx.fillStyle = '#ed7252'; ctx.beginPath(); ctx.ellipse(0, 3, 22, 25, 0, 0, TAU); ctx.fill();
+      ctx.fillStyle = '#ffe68e'; ctx.beginPath(); ctx.arc(0, 3, 8, 0, TAU); ctx.fill();
+      ctx.strokeStyle = '#8c593b'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(-19, 29); ctx.lineTo(19, 29); ctx.stroke();
+    } else if (/蛋/.test(label)) {
+      ctx.fillStyle = '#f7e5bf'; ctx.beginPath(); ctx.ellipse(0, 2, 23, 30, 0, 0, TAU); ctx.fill();
+      ctx.strokeStyle = '#d2ab72'; ctx.lineWidth = 2; ctx.stroke();
+    } else if (/船/.test(label)) {
+      ctx.fillStyle = '#a9683e'; ctx.beginPath(); ctx.moveTo(-34, 8); ctx.quadraticCurveTo(0, 27, 34, 8); ctx.lineTo(23, 25); ctx.lineTo(-22, 25); ctx.closePath(); ctx.fill();
+      ctx.strokeStyle = '#65432f'; ctx.lineWidth = 4; ctx.beginPath(); ctx.moveTo(0, 8); ctx.lineTo(0, -28); ctx.stroke();
+      ctx.fillStyle = '#f3df9c'; ctx.beginPath(); ctx.moveTo(2, -25); ctx.lineTo(24, -4); ctx.lineTo(2, -2); ctx.closePath(); ctx.fill();
+    } else if (/雪/.test(label)) {
+      ctx.strokeStyle = '#aaddeb'; ctx.lineWidth = 4;
+      for (let i = 0; i < 3; i += 1) { const a = i * Math.PI / 3; ctx.beginPath(); ctx.moveTo(-Math.cos(a) * 27, -Math.sin(a) * 27); ctx.lineTo(Math.cos(a) * 27, Math.sin(a) * 27); ctx.stroke(); }
+    } else if (/尘/.test(label)) {
+      ctx.fillStyle = 'rgba(119,107,83,.68)';
+      [[-15, 4, 16], [11, 0, 19], [0, 17, 13]].forEach(([dx, dy, r]) => { ctx.beginPath(); ctx.arc(dx, dy, r, 0, TAU); ctx.fill(); });
+    } else if (/水|露|滴/.test(label)) {
+      ctx.fillStyle = '#93dbee'; ctx.beginPath(); ctx.moveTo(0, -31); ctx.bezierCurveTo(18, -10, 25, 4, 22, 16); ctx.bezierCurveTo(18, 31, -18, 31, -22, 16); ctx.bezierCurveTo(-24, 4, -17, -10, 0, -31); ctx.fill();
+      ctx.fillStyle = 'rgba(255,255,255,.75)'; ctx.beginPath(); ctx.arc(-7, 9, 5, 0, TAU); ctx.fill();
+    } else if (/鼓/.test(label)) {
+      ctx.fillStyle = '#d39a4d'; ctx.beginPath(); ctx.ellipse(0, 0, 30, 23, 0, 0, TAU); ctx.fill();
+      ctx.strokeStyle = '#8f5b2c'; ctx.lineWidth = 4; ctx.stroke();
+      ctx.fillStyle = '#f5dfb1'; ctx.beginPath(); ctx.ellipse(0, -2, 21, 15, 0, 0, TAU); ctx.fill();
+    } else if (/月/.test(label)) {
+      ctx.fillStyle = '#f4d16b'; ctx.beginPath(); ctx.arc(0, 0, 27, 0, TAU); ctx.fill();
+      ctx.fillStyle = 'rgba(255,253,237,.9)'; ctx.beginPath(); ctx.arc(10, -4, 22, 0, TAU); ctx.fill();
+    } else if (/线|轴/.test(label)) {
+      ctx.fillStyle = '#f6dfaa'; ctx.beginPath(); ctx.arc(0, 0, 25, 0, TAU); ctx.fill();
+      ctx.strokeStyle = '#815b3c'; ctx.lineWidth = 4; ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(-33, 0); ctx.lineTo(33, 0); ctx.stroke();
+    } else if (/秧|苗/.test(label)) {
+      ctx.strokeStyle = '#5d9d53'; ctx.lineWidth = 5; ctx.beginPath(); ctx.moveTo(0, 27); ctx.lineTo(0, -11); ctx.stroke();
+      ctx.fillStyle = '#7fc564'; ctx.beginPath(); ctx.ellipse(-12, -8, 13, 7, -.5, 0, TAU); ctx.fill(); ctx.beginPath(); ctx.ellipse(12, -8, 13, 7, .5, 0, TAU); ctx.fill();
+    } else {
+      ctx.fillStyle = tone || '#e8cf77'; ctx.beginPath(); ctx.arc(0, 0, 25, 0, TAU); ctx.fill();
+      ctx.strokeStyle = 'rgba(255,255,255,.7)'; ctx.lineWidth = 4; ctx.beginPath(); ctx.arc(0, 0, 12, 0, TAU); ctx.stroke();
+    }
+    ctx.restore();
+  }
+
   function drawCollect(ctx, mini) {
     const meta = DATA.seasons[mini.term.season];
     drawMiniBackdrop(ctx, mini);
@@ -1916,27 +2059,19 @@
     mini.game.targets.forEach((target, index) => {
       const x = 650 + index * 96;
       ctx.fillStyle = 'rgba(255,255,255,.68)';
-      ctx.beginPath(); ctx.arc(x, 64, 23, 0, TAU); ctx.fill();
-      ctx.fillStyle = meta.ink;
-      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-      ctx.font = '600 18px "Songti SC", serif';
-      ctx.fillText(target.glyph, x, 65);
+      ctx.beginPath(); ctx.arc(x, 64, 28, 0, TAU); ctx.fill();
+      drawObjectIcon(ctx, target.name, x, 64, 40);
     });
     mini.items.forEach(item => {
       ctx.save();
       ctx.translate(item.x, item.y);
-      ctx.fillStyle = 'rgba(51,74,45,.09)';
-      ctx.beginPath(); ctx.ellipse(0, 25, 28, 8, 0, 0, TAU); ctx.fill();
-      roundedRect(ctx, -30, -22, 60, 44, 13);
-      ctx.fillStyle = '#fffdf4'; ctx.fill();
-      ctx.strokeStyle = meta.color; ctx.lineWidth = 2; ctx.stroke();
-      ctx.fillStyle = meta.ink;
-      ctx.font = '600 20px "Songti SC", serif';
-      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-      ctx.fillText(item.glyph, 0, -1);
+      ctx.fillStyle = item.target ? 'rgba(255,255,255,.86)' : 'rgba(91,99,91,.18)';
+      ctx.beginPath(); ctx.arc(0, 0, 34, 0, TAU); ctx.fill();
+      ctx.strokeStyle = item.target ? meta.color : 'rgba(86,92,83,.3)'; ctx.lineWidth = 2; ctx.stroke();
+      drawObjectIcon(ctx, item.name, 0, -2, 53);
       ctx.font = '600 9px "PingFang SC", sans-serif';
-      ctx.fillStyle = '#69776d';
-      ctx.fillText(item.name, 0, 15);
+      ctx.fillStyle = '#69776d'; ctx.textAlign = 'center';
+      ctx.fillText(item.name, 0, 29);
       ctx.restore();
     });
     const bx = mini.basketX;
@@ -1971,10 +2106,7 @@
     ctx.fillStyle = meta.color;
     ctx.beginPath(); ctx.arc(0, 0, 94, 0, TAU); ctx.fill();
     ctx.strokeStyle = 'rgba(255,255,255,.85)'; ctx.lineWidth = 6; ctx.stroke();
-    ctx.fillStyle = '#fff';
-    ctx.font = '500 58px "Songti SC", serif';
-    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.fillText(mini.game.instrument || '鼓', 0, 4);
+    drawObjectIcon(ctx, mini.game.instrument || '鼓', 0, 4, 118);
     ctx.restore();
     ctx.fillStyle = meta.ink;
     ctx.textAlign = 'center';
@@ -2004,10 +2136,11 @@
     ctx.fillStyle = '#f9e5bf';
     ctx.beginPath(); ctx.ellipse(0, -5, 44, 67, 0, 0, TAU); ctx.fill();
     ctx.strokeStyle = meta.color; ctx.lineWidth = 3; ctx.stroke();
-    ctx.fillStyle = meta.ink;
-    ctx.font = '600 26px "Songti SC", serif';
-    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.fillText(mini.game.objectGlyph || '蛋', 0, -8);
+    ctx.strokeStyle = 'rgba(160,121,64,.38)'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(-16, -20); ctx.lineTo(-5, -9); ctx.lineTo(-12, 1); ctx.stroke();
+    ctx.fillStyle = 'rgba(255,255,255,.5)'; ctx.beginPath(); ctx.ellipse(-17, -27, 7, 13, -.45, 0, TAU); ctx.fill();
+    ctx.fillStyle = '#6a5b46'; ctx.beginPath(); ctx.arc(-10, -1, 2.2, 0, TAU); ctx.arc(10, -1, 2.2, 0, TAU); ctx.fill();
+    ctx.strokeStyle = '#b56e55'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(0, 5, 7, .2, Math.PI - .2); ctx.stroke();
     ctx.restore();
     const zoneHalf = .14 - mini.round * .025;
     const zoneLeft = 100 + (MINI.width - 200) * (.5 - zoneHalf);
@@ -2033,6 +2166,11 @@
   function drawSort(ctx, mini) {
     const meta = DATA.seasons[mini.term.season];
     drawMiniBackdrop(ctx, mini);
+    const sortTime = Math.max(0, mini.timeLimit - mini.elapsed);
+    roundedRect(ctx, 64, 26, MINI.width - 128, 9, 5);
+    ctx.fillStyle = 'rgba(255,255,255,.7)'; ctx.fill();
+    roundedRect(ctx, 64, 26, (MINI.width - 128) * (sortTime / mini.timeLimit), 9, 5);
+    ctx.fillStyle = sortTime < 5 ? '#d86046' : meta.color; ctx.fill();
     mini.buttons = [];
     const item = mini.game.items[Math.min(mini.index, mini.game.items.length - 1)];
     ctx.save();
@@ -2040,12 +2178,11 @@
     roundedRect(ctx, -150, -100, 300, 200, 26);
     ctx.fillStyle = 'rgba(255,255,255,.9)'; ctx.fill();
     ctx.strokeStyle = meta.color; ctx.lineWidth = 3; ctx.stroke();
+    drawObjectIcon(ctx, item?.name || '茶', 0, -14, 138);
     ctx.fillStyle = meta.ink;
-    ctx.font = '600 72px "Songti SC", serif';
-    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.fillText(item?.glyph || '？', 0, -15);
     ctx.font = '600 20px "PingFang SC", sans-serif';
-    ctx.fillText(item?.name || '完成', 0, 62);
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(item?.name || '完成', 0, 70);
     ctx.restore();
     const count = mini.game.categories.length;
     const totalW = count * 210 + (count - 1) * 22;
@@ -2056,13 +2193,11 @@
       ctx.fillStyle = index === 0 ? '#f7e4c1' : index === 1 ? '#dff1dc' : '#e4e8f7';
       ctx.fill();
       ctx.strokeStyle = 'rgba(45,67,51,.12)'; ctx.lineWidth = 2; ctx.stroke();
+      drawObjectIcon(ctx, category.name, x + 105, y + 34, 44);
       ctx.fillStyle = meta.ink;
-      ctx.font = '500 24px "Songti SC", serif';
+      ctx.font = '600 13px "PingFang SC", sans-serif';
       ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-      ctx.fillText(category.glyph, x + 105, y + 37);
-      ctx.font = '600 11px "PingFang SC", sans-serif';
-      ctx.fillStyle = '#6d796f';
-      ctx.fillText(category.name, x + 105, y + 70);
+      ctx.fillText(category.name, x + 105, y + 72);
       mini.buttons.push({ x, y, w: 210, h: 92, index });
     });
     ctx.fillStyle = meta.ink;
@@ -2102,13 +2237,10 @@
     mini.objects.forEach(object => {
       ctx.save();
       ctx.translate(object.x, object.y);
-      ctx.fillStyle = object.target ? '#fff7cc' : 'rgba(92,105,98,.65)';
-      ctx.beginPath(); ctx.arc(0, 0, 24, 0, TAU); ctx.fill();
+      ctx.fillStyle = object.target ? 'rgba(255,247,204,.9)' : 'rgba(92,105,98,.26)';
+      ctx.beginPath(); ctx.arc(0, 0, 30, 0, TAU); ctx.fill();
       ctx.strokeStyle = object.target ? meta.color : 'rgba(255,255,255,.65)'; ctx.lineWidth = 2; ctx.stroke();
-      ctx.fillStyle = object.target ? meta.ink : '#fff';
-      ctx.font = '600 17px "Songti SC", serif';
-      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-      ctx.fillText(object.target ? mini.game.targetGlyph : mini.game.obstacleGlyph, 0, 1);
+      drawObjectIcon(ctx, object.target ? mini.game.targetName : mini.game.obstacleName, 0, 0, object.target ? 44 : 42);
       ctx.restore();
     });
     ctx.save();
@@ -2118,8 +2250,7 @@
     ctx.fillStyle = meta.color;
     ctx.beginPath(); ctx.moveTo(-48, 5); ctx.lineTo(48, 5); ctx.lineTo(28, 45); ctx.lineTo(-28, 45); ctx.closePath(); ctx.fill();
     ctx.strokeStyle = '#fff'; ctx.lineWidth = 3; ctx.stroke();
-    ctx.fillStyle = '#fff'; ctx.font = '600 21px "Songti SC", serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.fillText(mini.game.playerGlyph, 0, 26);
+    drawObjectIcon(ctx, mini.game.playerGlyph, 0, 6, 70);
     ctx.restore();
     ctx.fillStyle = meta.ink;
     ctx.font = '600 12px "PingFang SC", sans-serif';
@@ -2151,12 +2282,11 @@
       ctx.strokeStyle = active ? '#fff' : meta.color;
       ctx.lineWidth = active ? 5 : 2;
       ctx.stroke();
+      drawObjectIcon(ctx, symbol.name, x + tileW / 2, y + 58, 62, active ? '#fff7cf' : null);
       ctx.fillStyle = active ? '#fff' : meta.ink;
-      ctx.font = '600 43px "Songti SC", serif';
-      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-      ctx.fillText(symbol.glyph, x + tileW / 2, y + 55);
       ctx.font = '600 11px "PingFang SC", sans-serif';
-      ctx.fillText(symbol.name, x + tileW / 2, y + 104);
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(symbol.name, x + tileW / 2, y + 108);
       ctx.fillStyle = active ? 'rgba(255,255,255,.7)' : 'rgba(45,67,51,.28)';
       ctx.font = '600 10px "PingFang SC", sans-serif';
       ctx.fillText(String(index + 1), x + tileW / 2, y + 126);
@@ -2312,23 +2442,22 @@
       if (item.hung) {
         const side = item.cat === 0 ? 110 : 540;
         const slot = mini.items.slice(0, item.index).filter(piece => piece.cat === item.cat).length;
-        ctx.fillStyle = item.cat === 0 ? '#d75b41' : '#e3ad3e';
-        ctx.beginPath(); ctx.arc(side + 90 + slot * 67, 218 + (slot % 2) * 70, 23, 0, TAU); ctx.fill();
-        ctx.fillStyle = '#fff'; ctx.font = '600 14px "Songti SC", serif'; ctx.fillText(item.glyph, side + 90 + slot * 67, 223 + (slot % 2) * 70);
+        ctx.fillStyle = 'rgba(255,253,244,.88)';
+        ctx.beginPath(); ctx.arc(side + 90 + slot * 67, 218 + (slot % 2) * 70, 27, 0, TAU); ctx.fill();
+        drawObjectIcon(ctx, item.name, side + 90 + slot * 67, 218 + (slot % 2) * 70, 40);
       }
     });
     mini.items.forEach(item => {
       if (item.hung) return;
-      roundedRect(ctx, item.x - 31, item.y - 31, 62, 62, 17);
-      ctx.fillStyle = 'rgba(255,253,244,.92)'; ctx.fill();
+      ctx.fillStyle = 'rgba(255,253,244,.92)';
+      ctx.beginPath(); ctx.arc(item.x, item.y, 35, 0, TAU); ctx.fill();
       ctx.strokeStyle = item.cat === 0 ? '#d75b41' : '#d3a13b'; ctx.lineWidth = 2; ctx.stroke();
-      ctx.fillStyle = meta.ink; ctx.font = '600 18px "Songti SC", serif'; ctx.fillText(item.glyph, item.x, item.y + 3);
+      drawObjectIcon(ctx, item.name, item.x, item.y - 2, 54);
+      ctx.fillStyle = meta.ink; ctx.font = '600 9px "PingFang SC", sans-serif'; ctx.textAlign = 'center'; ctx.fillText(item.name, item.x, item.y + 29);
     });
     if (mini.dragging !== null) {
       const item = mini.items[mini.dragging];
-      ctx.fillStyle = item.cat === 0 ? '#d75b41' : '#d3a13b';
-      ctx.beginPath(); ctx.arc(mini.pointerX, mini.pointerY, 28, 0, TAU); ctx.fill();
-      ctx.fillStyle = '#fff'; ctx.font = '600 16px "Songti SC", serif'; ctx.fillText(item.glyph, mini.pointerX, mini.pointerY + 2);
+      drawObjectIcon(ctx, item.name, mini.pointerX, mini.pointerY, 64);
     }
     miniFlashText(ctx, mini);
   }
@@ -2490,10 +2619,10 @@
       sequence: ['观看亮起', '记住顺序', '依次点回'],
       rhythm: ['看节拍环', '收拢时点击', '连续命中'],
       timing: ['观察游标', '进入绿区', '点击停下'],
-      sort: ['看清物件', '选择类别', '完成分类'],
+      sort: ['看清物件', '限时分类', '收入茶篓'],
       path: ['左右操控', '收集目标', '避开障碍'],
-      assemble: ['拖动部件', '对准轮廓', '拼好纸鸢'],
-      weather: ['看天空变化', '选择晒或收', '连续判断'],
+      assemble: ['先架竹骨', '再覆纸面', '系尾线轴'],
+      weather: ['看天空变化', '限时选晒收', '连续判断'],
       fold: ['按住面皮', '向中心折合', '捏紧饺子'],
       salt: ['按住盐罐', '来回拖动', '覆盖肉条'],
       wipe: ['按住扫帚', '拖过积雪', '清出道路'],
@@ -2928,17 +3057,34 @@
   /* New interaction modes keep each season's six stations mechanically distinct. */
   function updateWeather(mini, dt) {
     if (mini.lockTimer > 0) mini.lockTimer -= dt;
-    if (mini.finishAt && mini.elapsed >= mini.finishAt) finishMini();
+    if (mini.finishAt) {
+      if (mini.elapsed >= mini.finishAt) finishMini();
+      return;
+    }
+    if (mini.lockTimer > 0) return;
+    mini.roundClock += dt;
+    if (mini.roundClock >= mini.roundLimit) {
+      mini.mistakes += 1;
+      mini.weatherIndex += 1;
+      mini.round = mini.weatherIndex;
+      mini.roundClock = 0;
+      mini.lockTimer = .35;
+      mini.flash = '来不及了，下一阵天气';
+      mini.flashTimer = .45;
+      playSound('error');
+      if (mini.weatherIndex >= mini.weatherPattern.length) mini.finishAt = mini.elapsed + .55;
+    }
   }
 
   function chooseWeather(index) {
     const mini = state.mini;
-    if (!mini || mini.type !== 'weather' || mini.finished || mini.lockTimer > 0) return;
+    if (!mini || mini.type !== 'weather' || mini.finished || mini.lockTimer > 0 || mini.finishAt) return;
     const expected = mini.weatherPattern[mini.weatherIndex] === 1 ? 0 : 1;
     if (index === expected) { mini.flash = index === 0 ? '晒得正好' : '及时收回'; mini.flashTimer = .35; playSound('correct'); }
     else { mini.mistakes += 1; mini.flash = '再看一眼天空'; mini.flashTimer = .35; playSound('error'); }
     mini.weatherIndex += 1;
     mini.round = mini.weatherIndex;
+    mini.roundClock = 0;
     mini.lockTimer = .45;
     if (mini.weatherIndex >= mini.weatherPattern.length) mini.finishAt = mini.elapsed + .55;
   }
@@ -2958,49 +3104,154 @@
     // Circular gesture is tracked through pointer movement.
   }
 
+  function drawKitePart(ctx, kind, x, y, scale = 1, ghost = false, time = 0) {
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.scale(scale, scale);
+    ctx.lineJoin = 'round';
+    ctx.lineCap = 'round';
+    if (ghost) {
+      ctx.setLineDash([9, 8]);
+      ctx.globalAlpha = .42;
+      ctx.strokeStyle = '#47735b';
+      ctx.fillStyle = 'rgba(244,236,197,.28)';
+      ctx.lineWidth = 3;
+    } else {
+      ctx.globalAlpha = 1;
+      ctx.strokeStyle = '#315949';
+      ctx.lineWidth = 4;
+    }
+    if (kind === 'sail') {
+      ctx.beginPath();
+      ctx.moveTo(0, -106); ctx.lineTo(98, -4); ctx.lineTo(0, 112); ctx.lineTo(-98, -4); ctx.closePath();
+      if (!ghost) {
+        const grad = ctx.createLinearGradient(-80, -80, 82, 92);
+        grad.addColorStop(0, '#f8d66a'); grad.addColorStop(.52, '#e98262'); grad.addColorStop(1, '#7fc6a3');
+        ctx.fillStyle = grad;
+      }
+      ctx.fill(); ctx.stroke();
+      if (!ghost) {
+        ctx.fillStyle = 'rgba(255,255,255,.48)';
+        ctx.beginPath(); ctx.arc(0, -4, 28, 0, TAU); ctx.fill();
+        ctx.strokeStyle = 'rgba(255,255,255,.8)'; ctx.lineWidth = 3;
+        for (let i = 0; i < 8; i += 1) {
+          const angle = i * TAU / 8;
+          ctx.beginPath(); ctx.moveTo(Math.cos(angle) * 38, -4 + Math.sin(angle) * 38); ctx.lineTo(Math.cos(angle) * 54, -4 + Math.sin(angle) * 54); ctx.stroke();
+        }
+      }
+    } else if (kind === 'spine') {
+      ctx.strokeStyle = ghost ? '#47735b' : '#936333';
+      ctx.lineWidth = ghost ? 3 : 9;
+      ctx.beginPath(); ctx.moveTo(0, -111); ctx.bezierCurveTo(-7, -42, 7, 53, 0, 116); ctx.stroke();
+      if (!ghost) {
+        ctx.strokeStyle = '#d6ad68'; ctx.lineWidth = 2;
+        [-70, -20, 30, 80].forEach(yy => { ctx.beginPath(); ctx.moveTo(-7, yy); ctx.lineTo(7, yy + 2); ctx.stroke(); });
+      }
+    } else if (kind === 'spar') {
+      ctx.strokeStyle = ghost ? '#47735b' : '#936333';
+      ctx.lineWidth = ghost ? 3 : 9;
+      ctx.beginPath(); ctx.moveTo(-101, -5); ctx.quadraticCurveTo(0, 7, 101, -5); ctx.stroke();
+      if (!ghost) {
+        ctx.strokeStyle = '#d6ad68'; ctx.lineWidth = 2;
+        [-62, -24, 24, 62].forEach(xx => { ctx.beginPath(); ctx.moveTo(xx, -4); ctx.lineTo(xx + 2, 5); ctx.stroke(); });
+      }
+    } else if (kind === 'ribbonLeft') {
+      ctx.strokeStyle = ghost ? '#47735b' : '#e06c5a';
+      ctx.lineWidth = ghost ? 3 : 8;
+      ctx.beginPath(); ctx.moveTo(0, -46); ctx.bezierCurveTo(-34, 4 + Math.sin(time * 2) * 4, -5, 42, -30, 88); ctx.stroke();
+      if (!ghost) {
+        ctx.fillStyle = '#efae54';
+        ctx.beginPath(); ctx.moveTo(-30, 88); ctx.lineTo(-18, 72); ctx.lineTo(-5, 90); ctx.closePath(); ctx.fill();
+      }
+    } else if (kind === 'ribbonRight') {
+      ctx.strokeStyle = ghost ? '#47735b' : '#4e9dc0';
+      ctx.lineWidth = ghost ? 3 : 8;
+      ctx.beginPath(); ctx.moveTo(0, -46); ctx.bezierCurveTo(34, 4 + Math.cos(time * 2) * 4, 5, 42, 30, 88); ctx.stroke();
+      if (!ghost) {
+        ctx.fillStyle = '#f4c85b';
+        ctx.beginPath(); ctx.moveTo(30, 88); ctx.lineTo(18, 72); ctx.lineTo(5, 90); ctx.closePath(); ctx.fill();
+      }
+    } else if (kind === 'spool') {
+      ctx.fillStyle = ghost ? ctx.fillStyle : '#f6dfaa';
+      ctx.beginPath(); ctx.arc(0, 0, 30, 0, TAU); ctx.fill(); ctx.stroke();
+      if (!ghost) {
+        ctx.strokeStyle = '#735134'; ctx.lineWidth = 4;
+        ctx.beginPath(); ctx.arc(0, 0, 18, 0, TAU); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(-39, 0); ctx.lineTo(39, 0); ctx.stroke();
+        ctx.strokeStyle = '#da6a55'; ctx.lineWidth = 3;
+        ctx.beginPath(); ctx.moveTo(-28, 0); ctx.quadraticCurveTo(-110, -50, -150, -8); ctx.stroke();
+      }
+    }
+    ctx.restore();
+  }
+
   function drawAssemble(ctx, mini) {
     const meta = DATA.seasons[mini.term.season];
     drawMiniBackdrop(ctx, mini);
+    const timeLeft = Math.max(0, mini.timeLimit - mini.elapsed);
+    roundedRect(ctx, 64, 34, MINI.width - 128, 10, 5);
+    ctx.fillStyle = 'rgba(255,255,255,.72)'; ctx.fill();
+    roundedRect(ctx, 64, 34, (MINI.width - 128) * (timeLeft / mini.timeLimit), 10, 5);
+    ctx.fillStyle = timeLeft < 10 ? '#d86046' : meta.color; ctx.fill();
     ctx.save();
-    ctx.translate(480, 255);
-    ctx.strokeStyle = meta.color;
-    ctx.lineWidth = 3;
-    ctx.setLineDash([9, 8]);
-    ctx.beginPath(); ctx.moveTo(0,-88); ctx.lineTo(92,0); ctx.lineTo(0,88); ctx.lineTo(-92,0); ctx.closePath(); ctx.stroke();
+    ctx.strokeStyle = 'rgba(55,100,78,.34)'; ctx.lineWidth = 2; ctx.setLineDash([7, 9]);
+    ctx.beginPath(); ctx.moveTo(480, 118); ctx.lineTo(590, 234); ctx.lineTo(480, 354); ctx.lineTo(370, 234); ctx.closePath(); ctx.stroke();
     ctx.setLineDash([]);
-    ctx.fillStyle = 'rgba(255,255,255,.55)';
-    ctx.fill();
+    ctx.strokeStyle = 'rgba(55,100,78,.22)';
+    ctx.beginPath(); ctx.moveTo(480, 118); ctx.lineTo(480, 354); ctx.moveTo(370, 234); ctx.lineTo(590, 234); ctx.stroke();
+    ctx.fillStyle = 'rgba(255,255,255,.34)'; ctx.fill();
     ctx.restore();
-    mini.targets.forEach(target => {
-      ctx.fillStyle = 'rgba(255,255,255,.78)';
-      ctx.beginPath(); ctx.arc(target.x, target.y, 45, 0, TAU); ctx.fill();
-      ctx.strokeStyle = meta.color; ctx.lineWidth = 2; ctx.stroke();
-      ctx.fillStyle = meta.ink;
-      ctx.font = '600 15px "PingFang SC", sans-serif';
-      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-      ctx.fillText(target.label, target.x, target.y + 3);
-    });
+
+    const placedKinds = new Set(mini.pieces.filter(piece => piece.placed).map(piece => piece.kind));
+    const targetOf = kind => mini.targets.find(target => target.kind === kind);
+    if (placedKinds.has('ribbonLeft')) { const t = targetOf('ribbonLeft'); drawKitePart(ctx, 'ribbonLeft', t.x, t.y, 1, false, mini.elapsed); }
+    if (placedKinds.has('ribbonRight')) { const t = targetOf('ribbonRight'); drawKitePart(ctx, 'ribbonRight', t.x, t.y, 1, false, mini.elapsed); }
+    if (placedKinds.has('sail')) { const t = targetOf('sail'); drawKitePart(ctx, 'sail', t.x, t.y, 1); }
+    if (placedKinds.has('spine')) { const t = targetOf('spine'); drawKitePart(ctx, 'spine', t.x, t.y, 1); }
+    if (placedKinds.has('spar')) { const t = targetOf('spar'); drawKitePart(ctx, 'spar', t.x, t.y, 1); }
+    if (placedKinds.has('spool')) { const t = targetOf('spool'); drawKitePart(ctx, 'spool', t.x, t.y, 1); }
+
+    const expectedKind = mini.assembleOrder[mini.nextPiece];
+    const expectedTarget = targetOf(expectedKind);
+    if (expectedTarget && !placedKinds.has(expectedKind)) {
+      const pulse = .08 + (Math.sin(mini.elapsed * 4) + 1) * .05;
+      ctx.save(); ctx.globalAlpha = pulse + .35;
+      drawKitePart(ctx, expectedKind, expectedTarget.x, expectedTarget.y, 1, true, mini.elapsed);
+      ctx.restore();
+      ctx.strokeStyle = meta.color; ctx.lineWidth = 3; ctx.setLineDash([5, 7]);
+      ctx.beginPath(); ctx.arc(expectedTarget.x, expectedTarget.y, expectedKind === 'sail' ? 115 : 46 + Math.sin(mini.elapsed * 3) * 3, 0, TAU); ctx.stroke(); ctx.setLineDash([]);
+    }
+
+    ctx.fillStyle = 'rgba(255,253,244,.8)';
+    roundedRect(ctx, 45, 405, MINI.width - 90, 117, 22); ctx.fill();
+    ctx.strokeStyle = 'rgba(65,95,73,.14)'; ctx.lineWidth = 2; ctx.stroke();
     mini.pieces.forEach(piece => {
       if (piece.placed) return;
-      const x = mini.dragging === piece.index ? mini.pointerX : piece.x;
-      const y = mini.dragging === piece.index ? mini.pointerY : piece.y;
-      roundedRect(ctx, x - 66, y - 34, 132, 68, 16);
-      ctx.fillStyle = mini.dragging === piece.index ? meta.pale : 'rgba(255,255,255,.92)'; ctx.fill();
-      ctx.strokeStyle = meta.color; ctx.lineWidth = 2; ctx.stroke();
-      ctx.fillStyle = meta.ink; ctx.font = '600 18px "Songti SC", serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-      ctx.fillText(piece.glyph, x - 34, y);
-      ctx.font = '600 12px "PingFang SC", sans-serif';
-      ctx.fillText(piece.name, x + 18, y + 1);
+      const dragging = mini.dragging === piece.index;
+      const x = dragging ? mini.pointerX : piece.x;
+      const y = dragging ? mini.pointerY : piece.y;
+      ctx.save();
+      if (!dragging) {
+        ctx.fillStyle = piece.kind === mini.assembleOrder[mini.nextPiece] ? 'rgba(255,246,207,.95)' : 'rgba(255,255,255,.78)';
+        ctx.beginPath(); ctx.arc(x, y, 45, 0, TAU); ctx.fill();
+        ctx.strokeStyle = piece.kind === mini.assembleOrder[mini.nextPiece] ? meta.color : 'rgba(61,91,72,.18)'; ctx.lineWidth = 2; ctx.stroke();
+      }
+      drawKitePart(ctx, piece.kind, x, y, dragging ? .82 : .38, false, mini.elapsed);
+      ctx.restore();
     });
     ctx.fillStyle = meta.ink; ctx.font = '600 14px "PingFang SC", sans-serif'; ctx.textAlign = 'center';
-    ctx.fillText('拖动部件到对应位置', MINI.width / 2, 530);
+    ctx.fillText('先装两根竹骨，再覆纸面，最后系飘带与线轴', MINI.width / 2, 541);
     miniFlashText(ctx, mini);
   }
-
   function drawWeatherGame(ctx, mini) {
     const meta = DATA.seasons[mini.term.season];
     drawMiniBackdrop(ctx, mini);
     mini.buttons = [];
+    const weatherTime = mini.finishAt ? 0 : Math.max(0, 1 - mini.roundClock / mini.roundLimit);
+    roundedRect(ctx, 64, 26, MINI.width - 128, 9, 5);
+    ctx.fillStyle = 'rgba(255,255,255,.72)'; ctx.fill();
+    roundedRect(ctx, 64, 26, (MINI.width - 128) * weatherTime, 9, 5);
+    ctx.fillStyle = weatherTime < .3 ? '#d86046' : '#e6b33d'; ctx.fill();
     const sunny = mini.weatherPattern[mini.weatherIndex] === 1;
     const item = mini.game.items[mini.weatherIndex] || '书';
     ctx.save();
@@ -3021,8 +3272,10 @@
     ctx.fillStyle = meta.ink;
     ctx.font = '600 18px "PingFang SC", sans-serif'; ctx.textAlign = 'center';
     ctx.fillText(sunny ? '太阳出来了' : '乌云压过来了', MINI.width/2, 300);
-    ctx.font = '500 34px "Songti SC", serif';
-    ctx.fillText(`${item}`, MINI.width/2, 345);
+    drawObjectIcon(ctx, item, MINI.width / 2, 346, 88);
+    ctx.font = '600 13px "PingFang SC", sans-serif';
+    ctx.fillStyle = meta.ink;
+    ctx.fillText(item, MINI.width / 2, 397);
     const choices = [['晒一晒','晒'], ['收回屋','收']];
     choices.forEach((choice,index)=>{
       const x = index === 0 ? 250 : 510;
@@ -3135,11 +3388,10 @@
       roundedRect(ctx,x,y-38,120,76,16);
       ctx.fillStyle=used?meta.pale:'rgba(255,255,255,.9)'; ctx.fill();
       ctx.strokeStyle=used?meta.color:'rgba(45,67,51,.18)'; ctx.lineWidth=2; ctx.stroke();
-      ctx.fillStyle=meta.ink; ctx.font='600 20px "Songti SC", serif'; ctx.textBaseline='middle';
-      ctx.fillText(item.glyph,x+60,y-5);
-      ctx.font='600 10px "PingFang SC", sans-serif'; ctx.fillStyle='#748178'; ctx.fillText(item.name,x+60,y+22);
+      drawObjectIcon(ctx, item.name, x + 60, y - 9, 52);
+      ctx.font='600 10px "PingFang SC", sans-serif'; ctx.fillStyle='#748178'; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText(item.name,x+60,y+26);
     });
-    if(mini.dragging!==null){const item=mini.game.ingredients[mini.dragging]; ctx.fillStyle=meta.color;ctx.beginPath();ctx.arc(mini.pointerX,mini.pointerY,28,0,TAU);ctx.fill();ctx.fillStyle='#fff';ctx.font='600 17px "Songti SC", serif';ctx.fillText(item.glyph,mini.pointerX,mini.pointerY+2);}
+    if(mini.dragging!==null){const item=mini.game.ingredients[mini.dragging];ctx.fillStyle='rgba(255,253,244,.9)';ctx.beginPath();ctx.arc(mini.pointerX,mini.pointerY,34,0,TAU);ctx.fill();ctx.strokeStyle=meta.color;ctx.lineWidth=2;ctx.stroke();drawObjectIcon(ctx,item.name,mini.pointerX,mini.pointerY,58);}
     miniFlashText(ctx,mini);
   }
 

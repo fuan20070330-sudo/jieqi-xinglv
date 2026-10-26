@@ -47,14 +47,20 @@ fs.mkdirSync(ARTIFACTS, { recursive: true });
   await page.click('#miniStartBtn');
   await page.waitForTimeout(300);
   const mini = await page.locator('#miniCanvas').boundingBox();
-  const from = { x: mini.x + 130 / 960 * mini.width, y: mini.y + 455 / 560 * mini.height };
-  const to = { x: mini.x + 480 / 960 * mini.width, y: mini.y + 170 / 560 * mini.height };
-  await page.mouse.move(from.x, from.y);
-  await page.mouse.down();
-  await page.mouse.move(to.x, to.y, { steps: 8 });
-  await page.mouse.up();
+  const kitePieces = await page.evaluate(() => JourneyDebug.state.mini.pieces.map(piece => ({ ...piece })));
+  const kiteTargets = await page.evaluate(() => JourneyDebug.state.mini.targets.map(target => ({ ...target })));
+  for (const piece of kitePieces.slice(0, 5)) {
+    const target = kiteTargets.find(item => item.kind === piece.kind);
+    const from = { x: mini.x + piece.x / 960 * mini.width, y: mini.y + piece.y / 560 * mini.height };
+    const to = { x: mini.x + target.x / 960 * mini.width, y: mini.y + target.y / 560 * mini.height };
+    await page.mouse.move(from.x, from.y);
+    await page.mouse.down();
+    await page.mouse.move(to.x, to.y, { steps: 8 });
+    await page.mouse.up();
+    await page.waitForTimeout(90);
+  }
   await page.waitForTimeout(350);
-  await shot('04_清明拼纸鸢.png', '清明：拖动物件拼成纸鸢');
+  await shot('04_清明拼纸鸢.png', '清明：装配竹骨、纸面与双飘带');
   await page.click('#miniClose');
 
   await page.evaluate(() => {
