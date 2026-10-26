@@ -1075,10 +1075,10 @@
       mini.velocity = 0;
       mini.hits = 0;
       mini.rockRows = [
-        { progress: .24, x: 305, hit: false },
-        { progress: .45, x: 500, hit: false },
-        { progress: .66, x: 650, hit: false },
-        { progress: .83, x: 380, hit: false }
+        { progress: .22, x: 320, hit: false },
+        { progress: .42, x: 600, hit: false },
+        { progress: .72, x: 300, hit: false },
+        { progress: .88, x: 680, hit: false }
       ].slice(0, mini.game.rocks || 4);
     } else if (mini.type === 'dew') {
       const count = mini.game.drops || 8;
@@ -1248,7 +1248,7 @@
       const item = mini.items.find(piece => !piece.hung && Math.abs(piece.x - point.x) < 55 && Math.abs(piece.y - point.y) < 55);
       if (item) mini.dragging = item.index;
     } else if (mini.type === 'lantern') {
-      mini.velocity += point.x < MINI.width / 2 ? -4.4 : 4.4;
+      mini.velocity = clamp(mini.velocity + (point.x < MINI.width / 2 ? -160 : 160), -240, 240);
       mini.flash = point.x < MINI.width / 2 ? '左岸推流' : '右岸推流';
       mini.flashTimer = .22;
     } else if (mini.type === 'dew') {
@@ -1509,8 +1509,8 @@
       if (event.key === 'd' || event.key === 'D' || event.key === 'ArrowRight') { pumpStroke(1); return true; }
     }
     if (mini.type === 'lantern') {
-      if (event.key === 'a' || event.key === 'A' || event.key === 'ArrowLeft') { mini.velocity -= 130; return true; }
-      if (event.key === 'd' || event.key === 'D' || event.key === 'ArrowRight') { mini.velocity += 130; return true; }
+      if (event.key === 'a' || event.key === 'A' || event.key === 'ArrowLeft') { mini.velocity = clamp(mini.velocity - 150, -240, 240); return true; }
+      if (event.key === 'd' || event.key === 'D' || event.key === 'ArrowRight') { mini.velocity = clamp(mini.velocity + 150, -240, 240); return true; }
     }
     if (mini.type === 'shake') {
       if (event.key === 'a' || event.key === 'A' || event.key === 'ArrowLeft') { mini.basketX = clamp(mini.basketX - 44, 100, MINI.width - 100); return true; }
@@ -1887,7 +1887,7 @@
     mini.lanternX = clamp(mini.lanternX + mini.velocity * dt, 115, MINI.width - 115);
     mini.rockRows.forEach(rock => {
       const y = 425 - (rock.progress - mini.progress) * 620;
-      if (!rock.hit && Math.abs(y - 420) < 58 && Math.abs(mini.lanternX - rock.x) < 86) {
+      if (!rock.hit && Math.abs(y - 420) < 58 && Math.abs(mini.lanternX - rock.x) < 68) {
         rock.hit = true;
         mini.hits += 1;
         mini.mistakes += 1;

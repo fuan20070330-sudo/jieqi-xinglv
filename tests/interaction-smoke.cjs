@@ -165,12 +165,14 @@ const H = 560;
 
   await open('chushu', 'autumn');
   box = await miniBox();
+  await page.waitForFunction(() => JourneyDebug.state.mini && JourneyDebug.state.mini.progress >= .3, null, { timeout: 8000 });
   await click(box, 170, 360);
-  await page.waitForTimeout(120);
-  await click(box, 790, 360);
+  await page.waitForTimeout(150);
   results.lantern = await page.evaluate(() => ({ progress: JourneyDebug.state.mini.progress, velocity: JourneyDebug.state.mini.velocity, flash: JourneyDebug.state.mini.flash }));
-  await page.evaluate(() => { JourneyDebug.state.mini.progress = .999; JourneyDebug.state.mini.finishAt = null; });
-  await page.waitForSelector('#miniOverlay', { state: 'hidden', timeout: 6000 });
+  await page.waitForFunction(() => JourneyDebug.state.mini && JourneyDebug.state.mini.progress >= .53, null, { timeout: 10000 });
+  await click(box, 790, 360);
+  results.lanternTurn = await page.evaluate(() => ({ progress: JourneyDebug.state.mini.progress, x: JourneyDebug.state.mini.lanternX, velocity: JourneyDebug.state.mini.velocity, mistakes: JourneyDebug.state.mini.mistakes }));
+  await page.waitForSelector('#miniOverlay', { state: 'hidden', timeout: 12000 });
   await page.waitForTimeout(420);
   results.lanternExit = await page.evaluate(() => ({
     mode: JourneyDebug.state.mode,
@@ -328,7 +330,8 @@ const H = 560;
   if (results.plant.planted < 9) failures.push('插秧未填满九格');
   if (results.noodle.traced < results.noodle.total) failures.push('拉面未描完整条路径');
   if (results.hang.hung < 9) failures.push('晒秋未挂满九件');
-  if (results.lantern.progress <= 0 || !results.lantern.flash.includes('推流')) failures.push('河灯未被水流推动');
+  if (results.lantern.progress <= 0 || !results.lantern.flash.includes('推流') || Math.abs(results.lantern.velocity) < 80) failures.push('河灯未被水流有效推动');
+  if (results.lanternTurn.mistakes !== 0 || results.lanternExit.stars !== 3) failures.push('河灯零碰撞路线无法获得三星');
   if (results.lanternExit.mode !== 'world' || !results.lanternExit.overlayHidden || !results.lanternExit.complete) failures.push('处暑河灯完成后未退出小游戏');
   if (results.dew.caught < results.dew.total) failures.push('清露未收满');
   if (!results.moon.offsets.every(offset => offset === 0)) failures.push('月盘未校准');
