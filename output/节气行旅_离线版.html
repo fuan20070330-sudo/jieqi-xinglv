@@ -334,7 +334,7 @@ window.JOURNEY_DATA = {
       culture: '春分有竖蛋的趣味民俗，挑战重心与耐心，而不是所谓“引力异常”。',
       game: {
         type: 'timing', title: '春分立蛋', hint: '在游标进入绿色区域时点击或按空格，让鸡蛋站稳。',
-        objectGlyph: '蛋', rounds: 3
+        objectGlyph: '蛋', rounds: 5, timeLimit: 24
       }
     },
     {
@@ -380,8 +380,8 @@ window.JOURNEY_DATA = {
       position: { x: 520, y: 500 }, color: '#d7ad3d',
       culture: '小满前后农事繁忙，部分地区有祭车神、祈求灌溉顺利的习俗。',
       game: {
-        type: 'pump', title: '踩动水车', hint: '左右交替踩动踏板八次，让水车持续把水送进田里。',
-        strokes: 8
+        type: 'pump', title: '稳住水车', hint: '左右交替踩踏，让水位保持在绿色区间累计 8 秒。',
+        targetSeconds: 8
       }
     },
     {
@@ -389,8 +389,8 @@ window.JOURNEY_DATA = {
       position: { x: 900, y: 290 }, color: '#cf882e',
       culture: '芒种兼有收获与播种的农事节奏，各地还有送花神、煮梅等习俗。',
       game: {
-        type: 'plant', title: '收麦插秧', hint: '从秧盘拖出秧苗，依次放进九块水田格。',
-        slots: 9
+        type: 'plant', title: '收麦插秧', hint: '在 32 秒内把稻秧、豆苗和玉米苗分别拖进对应的三块田垄。',
+        slots: 9, timeLimit: 32, crops: [{ name: '稻秧' }, { name: '豆苗' }, { name: '玉米苗' }]
       }
     },
     {
@@ -408,7 +408,7 @@ window.JOURNEY_DATA = {
       culture: '小暑前后有晒书、晒衣的习俗，利用盛夏阳光防潮防霉。',
       game: {
         type: 'weather', title: '晒书晾衣', hint: '看天空变化，在太阳和乌云之间快速选择晒或收。',
-        rounds: 6, items: ['诗集', '长衫', '稻谷', '画册', '棉被', '豆子']
+        rounds: 8, items: ['诗集', '长衫', '稻谷', '画册', '棉被', '豆子', '衣裳', '书箱']
       }
     },
     {
@@ -425,12 +425,14 @@ window.JOURNEY_DATA = {
       position: { x: 300, y: 300 }, color: '#d99131',
       culture: '立秋前后，山区村落常把辣椒、玉米、南瓜等作物晾晒成缤纷的“晒秋”景观。',
       game: {
-        type: 'hang', title: '把秋色晒开', hint: '拖动红、黄两色作物，分别挂到同色晒架上。',
+        type: 'hang', title: '把秋色晒开', hint: '在 28 秒内把九件红、黄作物分别挂到同色晒架。', timeLimit: 28,
         categories: [{ name: '红架', glyph: '红', cat: 0 }, { name: '黄架', glyph: '黄', cat: 1 }],
         items: [
           { name: '辣椒', glyph: '椒', cat: 0 }, { name: '玉米', glyph: '玉', cat: 1 },
           { name: '南瓜', glyph: '瓜', cat: 1 }, { name: '山楂', glyph: '楂', cat: 0 },
-          { name: '稻谷', glyph: '稻', cat: 1 }, { name: '枸杞', glyph: '杞', cat: 0 }
+          { name: '稻谷', glyph: '稻', cat: 1 }, { name: '枸杞', glyph: '杞', cat: 0 },
+          { name: '红椒', glyph: '椒', cat: 0 }, { name: '黄豆', glyph: '豆', cat: 1 },
+          { name: '高粱', glyph: '粱', cat: 0 }
         ]
       }
     },
@@ -448,8 +450,8 @@ window.JOURNEY_DATA = {
       position: { x: 1000, y: 440 }, color: '#899e78',
       culture: '部分地区有收清露、饮白露茶的习俗，表达对秋日清晨的珍惜。',
       game: {
-        type: 'dew', title: '收一盅清露', hint: '在露珠消失前逐颗点入瓷盅，收满八颗清露。',
-        drops: 8
+        type: 'dew', title: '收一盅清露', hint: '在露珠消失前准确点入瓷盅，收满十二颗清露；空点会失误。',
+        drops: 12, timeLimit: 24
       }
     },
     {
@@ -466,8 +468,8 @@ window.JOURNEY_DATA = {
       position: { x: 1120, y: 880 }, color: '#b1803a',
       culture: '寒露与重阳时节相近，部分地区有登高、赏菊、饮菊花酒的习俗。',
       game: {
-        type: 'climb', title: '踏阶登高', hint: '从低到高依次点击十块石阶，一步一级登上山亭。',
-        stones: 10
+        type: 'climb', title: '踏阶登高', hint: '在 20 秒内从低到高点击十二块石阶，踏错会失误。',
+        stones: 12, timeLimit: 20
       }
     },
     {
@@ -475,8 +477,8 @@ window.JOURNEY_DATA = {
       position: { x: 650, y: 980 }, color: '#c86a2d',
       culture: '霜降前后，部分地区有吃柿子、赏菊、登高的习俗。',
       game: {
-        type: 'shake', title: '摇落枝头红柿', hint: '按住树干左右快速摇动，让五颗柿子落进竹篮。',
-        fruits: 5
+        type: 'shake', title: '摇落枝头红柿', hint: '在 28 秒内摇树，并移动竹篮接住五颗落下的柿子。',
+        fruits: 6, targetFruits: 5, timeLimit: 28
       }
     },
     {
@@ -484,7 +486,7 @@ window.JOURNEY_DATA = {
       position: { x: 320, y: 430 }, color: '#5f91ae',
       culture: '立冬有补冬、吃饺子等习俗，北方不少地区把饺子作为节令食物。',
       game: {
-        type: 'fold', title: '包一盘饺子', hint: '按住面皮两侧向中心折合，捏出三只饺子。', rounds: 3
+        type: 'fold', title: '包一盘饺子', hint: '每只饺子先放馅、再折合、最后捏紧边缘；完成三只。', rounds: 3
       }
     },
     {
@@ -492,7 +494,7 @@ window.JOURNEY_DATA = {
       position: { x: 600, y: 250 }, color: '#71a7c0',
       culture: '小雪前后气温降低，部分地区开始腌腊肉、晒鱼干，为寒冬储备食物。',
       game: {
-        type: 'salt', title: '给腊肉抹盐', hint: '按住盐罐在肉条上来回拖动，把盐均匀覆盖。', strips: 3
+        type: 'salt', title: '给腊肉抹盐', hint: '按住盐罐移动，三条肉都要均匀覆盖；撒得过厚会失误。', strips: 3
       }
     },
     {
@@ -500,7 +502,7 @@ window.JOURNEY_DATA = {
       position: { x: 980, y: 300 }, color: '#4f87a7',
       culture: '大雪时节积雪加深，扫雪开路、赏雪、腌肉等习俗与冬日生活相连。',
       game: {
-        type: 'wipe', title: '扫出一条归路', hint: '按住扫帚拖过雪堆，清出通往家门的小路。', patches: 6
+        type: 'wipe', title: '扫出一条归路', hint: '在 24 秒内拖动扫帚清除八处雪堆。', patches: 8, timeLimit: 24
       }
     },
     {
@@ -508,7 +510,7 @@ window.JOURNEY_DATA = {
       position: { x: 1450, y: 410 }, color: '#6aa3bd',
       culture: '冬至有吃饺子、汤圆等习俗，不同地区用各自的食物寄托团圆与迎冬。',
       game: {
-        type: 'roll', title: '搓一碗汤圆', hint: '按住面团并画圈搓圆，做够三颗汤圆。', rounds: 3
+        type: 'roll', title: '搓一碗汤圆', hint: '按住面团持续画圈，每颗至少转两圈半，搓出三颗汤圆。', rounds: 3, targetTurns: 2.4
       }
     },
     {
@@ -516,7 +518,7 @@ window.JOURNEY_DATA = {
       position: { x: 1220, y: 850 }, color: '#5b8ca6',
       culture: '小寒前后有吃腊八粥、探梅、备年货等习俗，用热粥温暖寒冬。',
       game: {
-        type: 'pour', title: '配一碗腊八粥', hint: '按米、豆、枣、果的顺序，把食材拖进粥锅。',
+        type: 'pour', title: '配一碗腊八粥', hint: '在 16 秒内按米、豆、枣、果的顺序，把食材拖进粥锅。', timeLimit: 16,
         ingredients: [{ name: '米', glyph: '米' }, { name: '豆', glyph: '豆' }, { name: '枣', glyph: '枣' }, { name: '果', glyph: '果' }]
       }
     },
@@ -525,7 +527,7 @@ window.JOURNEY_DATA = {
       position: { x: 700, y: 960 }, color: '#507e99',
       culture: '大寒临近春节，部分地区有除尘、备年货等习俗，以清爽环境迎接新年。',
       game: {
-        type: 'sweep', title: '扫尘迎新年', hint: '快速划过屋内的尘团，把角落清扫干净。', spots: 8
+        type: 'sweep', title: '扫尘迎新年', hint: '在 22 秒内清理九处尘团，避开桌上的瓷器。', spots: 9, timeLimit: 22
       }
     }
   ]
@@ -1513,25 +1515,29 @@ window.JOURNEY_DATA = {
       mini.timeLimit = mini.game.timeLimit || 45;
     } else if (mini.type === 'weather') {
       mini.round = 0;
-      mini.weatherPattern = [1, 0, 1, 1, 0, 0];
+      mini.weatherPattern = [1, 0, 1, 1, 0, 0, 1, 0];
       mini.weatherIndex = 0;
       mini.lockTimer = 0;
       mini.roundClock = 0;
-      mini.roundLimit = 2.4;
+      mini.roundLimit = 2;
       mini.finishAt = null;
     } else if (mini.type === 'fold') {
       mini.round = 0;
+      mini.stage = 0;
+      mini.filling = false;
       mini.folding = false;
       mini.foldStart = null;
       mini.foldDelta = 0;
       mini.lockTimer = 0;
     } else if (mini.type === 'salt') {
       mini.coverage = new Array(mini.game.strips || 3).fill(0);
+      mini.overSalted = new Array(mini.game.strips || 3).fill(false);
       mini.holding = false;
       mini.activeStrip = -1;
     } else if (mini.type === 'wipe') {
-      mini.patches = Array.from({ length: mini.game.patches || 6 }, (_, i) => ({ x: 220 + (i % 3) * 260, y: 230 + Math.floor(i / 3) * 150, r: 58, cleared: false }));
+      mini.patches = Array.from({ length: mini.game.patches || 8 }, (_, i) => ({ x: 190 + (i % 4) * 195, y: 185 + Math.floor(i / 4) * 155, r: 52, cleared: false }));
       mini.wiping = false;
+      mini.timeLimit = mini.game.timeLimit || 24;
     } else if (mini.type === 'roll') {
       mini.round = 0;
       mini.rollAngle = 0;
@@ -1544,12 +1550,16 @@ window.JOURNEY_DATA = {
       mini.dragX = 0;
       mini.dragY = 0;
       mini.pot = { x: 480, y: 330, r: 92 };
+      mini.timeLimit = mini.game.timeLimit || 16;
+      mini.trayOrder = [2, 0, 3, 1];
     } else if (mini.type === 'sweep') {
       const random = seededRandom(20261025 + mini.term.id.length);
-      mini.spots = Array.from({ length: mini.game.spots || 8 }, () => ({ x: 180 + random() * 600, y: 150 + random() * 300, r: 28 + random() * 14, cleared: false }));
+      mini.spots = Array.from({ length: mini.game.spots || 9 }, () => ({ x: 180 + random() * 600, y: 150 + random() * 300, r: 28 + random() * 14, cleared: false }));
+      mini.fragiles = [{ x: 300, y: 165, hit: false }, { x: 675, y: 290, hit: false }, { x: 470, y: 430, hit: false }];
       mini.sweeping = false;
       mini.lastX = 0;
       mini.lastY = 0;
+      mini.timeLimit = mini.game.timeLimit || 22;
     } else if (mini.type === 'duel') {
       mini.successes = 0;
       mini.round = 0;
@@ -1558,30 +1568,44 @@ window.JOURNEY_DATA = {
       mini.playerX = MINI.width / 2;
       mini.lockTimer = 0;
       mini.finishAt = null;
+      mini.timeLimit = mini.game.timeLimit || 24;
     } else if (mini.type === 'pump') {
       mini.strokes = 0;
       mini.lastSide = null;
       mini.pumpPulse = 0;
       mini.wheelAngle = 0;
       mini.waterLevel = .18;
+      mini.holdTime = 0;
+      mini.targetSeconds = mini.game.targetSeconds || 8;
+      mini.overflowed = false;
+      mini.finishAt = null;
       mini.buttons = [
         { x: 165, y: 360, w: 190, h: 108, index: 0, label: '左脚' },
         { x: 605, y: 360, w: 190, h: 108, index: 1, label: '右脚' }
       ];
     } else if (mini.type === 'plant') {
-      mini.plots = Array.from({ length: mini.game.slots || 9 }, (_, i) => ({ x: 300 + (i % 3) * 180, y: 180 + Math.floor(i / 3) * 105, planted: false }));
+      mini.plots = Array.from({ length: mini.game.slots || 9 }, (_, i) => ({
+        x: 300 + (i % 3) * 180,
+        y: 180 + Math.floor(i / 3) * 105,
+        crop: i % (mini.game.crops?.length || 3),
+        planted: false
+      }));
       mini.dragging = false;
+      mini.selectedCrop = null;
       mini.planted = 0;
+      mini.timeLimit = mini.game.timeLimit || 32;
     } else if (mini.type === 'noodle') {
       const count = mini.game.points || 17;
       mini.tracePoints = Array.from({ length: count }, (_, i) => ({ x: 165 + i * (630 / (count - 1)), y: 292 + Math.sin(i * .8) * 82 }));
       mini.traceIndex = 0;
       mini.tracing = false;
       mini.traceMistakes = 0;
+      mini.noodleOffPath = false;
     } else if (mini.type === 'hang') {
-      mini.items = mini.game.items.map((item, index) => ({ ...item, index, x: 155 + index * 130, y: 470, hung: false }));
+      mini.items = mini.game.items.map((item, index) => ({ ...item, index, x: 100 + (index % 5) * 190, y: 432 + Math.floor(index / 5) * 58, hung: false }));
       mini.dragging = null;
       mini.hung = 0;
+      mini.timeLimit = mini.game.timeLimit || 28;
     } else if (mini.type === 'lantern') {
       mini.progress = 0;
       mini.lanternX = MINI.width / 2;
@@ -1604,6 +1628,7 @@ window.JOURNEY_DATA = {
       }));
       mini.caught = 0;
       mini.respawnIndex = 0;
+      mini.timeLimit = mini.game.timeLimit || 24;
     } else if (mini.type === 'moon') {
       mini.offsets = [3, 6, 4];
       mini.rotations = 1;
@@ -1616,13 +1641,19 @@ window.JOURNEY_DATA = {
       }));
       mini.nextStone = 0;
       mini.finishAt = null;
+      mini.timeLimit = mini.game.timeLimit || 20;
     } else if (mini.type === 'shake') {
       mini.treeSway = 0;
-      mini.fruits = mini.game.fruits || 5;
+      mini.fruits = mini.game.fruits || 6;
+      mini.targetFruits = mini.game.targetFruits || 5;
+      mini.caught = 0;
+      mini.falling = [];
+      mini.basketX = 720;
       mini.shakeCount = 0;
       mini.shaking = false;
       mini.lastX = MINI.width / 2;
       mini.cooldown = 0;
+      mini.timeLimit = mini.game.timeLimit || 28;
     }
   }
 
@@ -1688,13 +1719,27 @@ window.JOURNEY_DATA = {
       const piece = mini.pieces.find(item => !item.placed && Math.abs(item.x - point.x) < 72 && Math.abs(item.y - point.y) < 40);
       if (piece) mini.dragging = piece.index;
     } else if (mini.type === 'pour') {
-      const index = mini.game.ingredients.findIndex((item, i) => i >= mini.index && point.x > 140 + i * 220 && point.x < 280 + i * 220 && point.y > 408 && point.y < 500);
-      if (index >= 0) mini.dragging = index;
+      const slot = (mini.trayOrder || mini.game.ingredients.map((item, index) => index)).findIndex((itemIndex, i) => point.x > 140 + i * 220 && point.x < 280 + i * 220 && point.y > 408 && point.y < 500);
+      if (slot >= 0) mini.dragging = mini.trayOrder[slot];
     } else if (mini.type === 'fold') {
-      if (Math.abs(point.x - MINI.width / 2) < 150 && Math.abs(point.y - 270) < 115) {
+      if (mini.stage === 0 && distance(point, { x: MINI.width / 2, y: 270 }) < 88) {
+        mini.stage = 1;
+        mini.filling = true;
+        mini.flash = '馅料放好了';
+        mini.flashTimer = .35;
+        playSound('tick');
+      } else if (mini.stage === 1 && Math.abs(point.x - MINI.width / 2) < 155 && Math.abs(point.y - 270) < 120) {
         mini.folding = true;
         mini.foldStart = point.x;
         mini.foldDelta = 0;
+      } else if (mini.stage === 2 && distance(point, { x: MINI.width / 2, y: 270 }) < 100) {
+        mini.round += 1;
+        mini.stage = 0;
+        mini.filling = false;
+        mini.flash = '捏紧一只';
+        mini.flashTimer = .35;
+        playSound('correct');
+        if (mini.round >= mini.game.rounds) finishMini();
       }
     } else if (mini.type === 'salt') {
       mini.holding = true;
@@ -1720,7 +1765,16 @@ window.JOURNEY_DATA = {
       const button = mini.buttons.find(item => point.x >= item.x && point.x <= item.x + item.w && point.y >= item.y && point.y <= item.y + item.h);
       if (button) pumpStroke(button.index);
     } else if (mini.type === 'plant') {
-      if (point.y > 425) mini.dragging = true;
+      if (point.y > 425) {
+        const crops = mini.game.crops || [];
+        const cropIndex = crops.findIndex((crop, index) => Math.abs(point.x - (220 + index * 260)) < 112);
+        if (cropIndex >= 0) {
+          mini.selectedCrop = cropIndex;
+          mini.dragging = true;
+          mini.pointerX = point.x;
+          mini.pointerY = point.y;
+        }
+      }
     } else if (mini.type === 'noodle') {
       const start = mini.tracePoints[0];
       if (distance(point, start) < 62) {
@@ -1761,6 +1815,7 @@ window.JOURNEY_DATA = {
     mini.pointerY = point.y;
     if (mini.type === 'collect' || mini.type === 'path') mini.pointerActive = true;
     if (mini.type === 'duel') mini.playerX = clamp(point.x, 120, MINI.width - 120);
+    if (mini.type === 'shake') mini.basketX = clamp(point.x, 100, MINI.width - 100);
     if (mini.type === 'noodle' && mini.tracing) trailNoodle(point);
     if (mini.type === 'shake' && mini.shaking) {
       const moveX = Math.abs(point.x - mini.lastX);
@@ -1789,7 +1844,7 @@ window.JOURNEY_DATA = {
         mini.rollTotal += Math.abs(delta);
         mini.rollAngle += delta;
         mini.lastAngle = angle;
-        if (mini.rollTotal >= TAU * .86) {
+        if (mini.rollTotal >= TAU * (mini.game.targetTurns || 2.4)) {
           mini.round += 1;
           mini.rollTotal = 0;
           mini.flash = '汤圆圆了';
@@ -1802,6 +1857,15 @@ window.JOURNEY_DATA = {
     if (mini.type === 'sweep' && mini.sweeping) {
       const move = Math.hypot(point.x - mini.lastX, point.y - mini.lastY);
       if (move > 16) {
+        mini.fragiles.forEach(vase => {
+          if (!vase.hit && distance(point, vase) < 42) {
+            vase.hit = true;
+            mini.mistakes += 1;
+            mini.flash = '碰到瓷器了';
+            mini.flashTimer = .4;
+            playSound('error');
+          }
+        });
         mini.spots.forEach(spot => {
           if (!spot.cleared && distance(point, spot) < spot.r + 24) {
             spot.hits = (spot.hits || 0) + 1;
@@ -1845,20 +1909,21 @@ window.JOURNEY_DATA = {
     if (mini.type === 'shake') mini.shaking = false;
     if (mini.type === 'plant' && mini.dragging) {
       const plot = mini.plots.find(item => !item.planted && distance(item, { x: mini.pointerX, y: mini.pointerY }) < 55);
-      if (plot) {
+      if (plot && plot.crop === mini.selectedCrop) {
         plot.planted = true;
         mini.planted += 1;
-        mini.flash = '栽下一株';
+        mini.flash = '栽对了';
         mini.flashTimer = .3;
         playSound('tick');
         if (mini.planted >= mini.plots.length) finishMini();
       } else {
         mini.mistakes += 1;
-        mini.flash = '对准水田格';
-        mini.flashTimer = .3;
+        mini.flash = plot ? '这不是同类苗' : '对准水田格';
+        mini.flashTimer = .35;
         playSound('error');
       }
       mini.dragging = false;
+      mini.selectedCrop = null;
     }
     if (mini.type === 'hang' && mini.dragging !== null) {
       const item = mini.items[mini.dragging];
@@ -1923,13 +1988,15 @@ window.JOURNEY_DATA = {
     }
     if (mini.type === 'fold' && mini.folding) {
       if (mini.foldDelta > 65) {
-        mini.round += 1;
-        mini.flash = '包好一只';
+        mini.stage = 2;
+        mini.flash = '再捏紧边缘';
         mini.flashTimer = .3;
-        playSound('correct');
-        if (mini.round >= mini.game.rounds) finishMini();
+        playSound('tick');
       } else if (mini.foldDelta < -20) {
         mini.mistakes += 1;
+        mini.folding = false;
+        mini.foldStart = null;
+        mini.foldDelta = 0;
         playSound('error');
       }
       mini.folding = false;
@@ -1982,6 +2049,10 @@ window.JOURNEY_DATA = {
       if (event.key === 'a' || event.key === 'A' || event.key === 'ArrowLeft') { mini.velocity -= 130; return true; }
       if (event.key === 'd' || event.key === 'D' || event.key === 'ArrowRight') { mini.velocity += 130; return true; }
     }
+    if (mini.type === 'shake') {
+      if (event.key === 'a' || event.key === 'A' || event.key === 'ArrowLeft') { mini.basketX = clamp(mini.basketX - 44, 100, MINI.width - 100); return true; }
+      if (event.key === 'd' || event.key === 'D' || event.key === 'ArrowRight') { mini.basketX = clamp(mini.basketX + 44, 100, MINI.width - 100); return true; }
+    }
     if (mini.type === 'weather' && /^[12]$/.test(event.key)) { chooseWeather(Number(event.key) - 1); return true; }
     if (mini.type === 'sort' && /^[1-9]$/.test(event.key)) { chooseSort(Number(event.key) - 1); return true; }
     if (mini.type === 'sequence' && /^[1-9]$/.test(event.key)) { chooseSequence(Number(event.key) - 1); return true; }
@@ -2005,17 +2076,22 @@ window.JOURNEY_DATA = {
     else if (mini.type === 'path') updatePath(mini, dt);
     else if (mini.type === 'sequence') updateSequence(mini, dt);
     else if (mini.type === 'weather') updateWeather(mini, dt);
+    else if (mini.type === 'hang') updateHang(mini, dt);
     else if (mini.type === 'fold') updateFold(mini, dt);
     else if (mini.type === 'salt') updateSalt(mini, dt);
     else if (mini.type === 'roll') updateRoll(mini, dt);
     else if (mini.type === 'duel') updateDuel(mini, dt);
     else if (mini.type === 'pump') updatePump(mini, dt);
+    else if (mini.type === 'plant') updatePlant(mini, dt);
     else if (mini.type === 'noodle') updateNoodle(mini, dt);
     else if (mini.type === 'lantern') updateLantern(mini, dt);
     else if (mini.type === 'dew') updateDew(mini, dt);
     else if (mini.type === 'moon') updateMoon(mini, dt);
     else if (mini.type === 'climb') updateClimb(mini, dt);
     else if (mini.type === 'shake') updateShake(mini, dt);
+    else if (mini.type === 'wipe') updateWipe(mini, dt);
+    else if (mini.type === 'pour') updatePour(mini, dt);
+    else if (mini.type === 'sweep') updateSweep(mini, dt);
   }
 
   function failMini(message) {
@@ -2181,7 +2257,14 @@ window.JOURNEY_DATA = {
       const object = mini.objects[i];
       if (object.y > 425 && object.y < 515 && Math.abs(object.x - mini.playerX) < 46) {
         if (object.target) { mini.collected += 1; mini.flash = mini.game.targetName; mini.flashTimer = .35; playSound('tick'); }
-        else { mini.collisions += 1; mini.mistakes += 1; mini.flash = mini.game.obstacleName; mini.flashTimer = .35; playSound('error'); }
+        else {
+          mini.collisions += 1;
+          mini.mistakes += 1;
+          mini.flash = mini.game.obstacleName;
+          mini.flashTimer = .35;
+          playSound('error');
+          if (mini.collisions >= 3) { failMini('船身触礁三次，再试一次'); return; }
+        }
         mini.objects.splice(i, 1);
       } else if (object.y > 620) mini.objects.splice(i, 1);
     }
@@ -2248,6 +2331,7 @@ window.JOURNEY_DATA = {
   }
 
   function updateDuel(mini, dt) {
+    if (mini.elapsed > mini.timeLimit) { failMini('斗蛋超时，再试一次'); return; }
     if (mini.lockTimer > 0) mini.lockTimer -= dt;
     mini.opponentX += mini.opponentDir * dt * 265;
     if (mini.opponentX > MINI.width - 180) { mini.opponentX = MINI.width - 180; mini.opponentDir = -1; }
@@ -2269,16 +2353,30 @@ window.JOURNEY_DATA = {
     mini.strokes += 1;
     mini.pumpPulse = 1;
     mini.wheelAngle += Math.PI / 3;
-    mini.waterLevel = Math.min(1, mini.waterLevel + .09);
+    mini.waterLevel += .19;
+    if (mini.waterLevel > .96 && !mini.overflowed) {
+      mini.waterLevel = .9;
+      mini.overflowed = true;
+      mini.mistakes += 1;
+      mini.flash = '水溢出田埂了';
+      mini.flashTimer = .4;
+      playSound('error');
+      return;
+    }
+    if (mini.waterLevel < .62) mini.overflowed = false;
+    mini.waterLevel = clamp(mini.waterLevel, 0, .96);
     mini.flash = side === 0 ? '左脚踩下' : '右脚踩下';
     mini.flashTimer = .22;
     playSound('tick');
-    if (mini.strokes >= (mini.game.strokes || 8)) mini.finishAt = mini.elapsed + .55;
   }
 
   function updatePump(mini, dt) {
     mini.pumpPulse = Math.max(0, mini.pumpPulse - dt * 5);
     mini.wheelAngle += dt * (mini.strokes > 0 ? .75 : .12);
+    mini.waterLevel = clamp(mini.waterLevel - dt * .115, 0, .96);
+    if (mini.waterLevel >= .34 && mini.waterLevel <= .82) mini.holdTime += dt;
+    else mini.holdTime = Math.max(0, mini.holdTime - dt * .3);
+    if (mini.holdTime >= mini.targetSeconds && !mini.finishAt) mini.finishAt = mini.elapsed + .55;
     if (mini.finishAt && mini.elapsed >= mini.finishAt) finishMini();
   }
 
@@ -2289,6 +2387,17 @@ window.JOURNEY_DATA = {
       const next = mini.tracePoints[mini.traceIndex];
       if (distance(point, next) > 54) break;
       mini.traceIndex += 1;
+      mini.noodleOffPath = false;
+    }
+    const nextPoint = mini.tracePoints[Math.min(mini.traceIndex, mini.tracePoints.length - 1)];
+    if (!mini.noodleOffPath && nextPoint && distance(point, nextPoint) > 125) {
+      mini.noodleOffPath = true;
+      mini.traceMistakes += 1;
+      mini.mistakes += 1;
+      mini.flash = '面条拖出碗沿了';
+      mini.flashTimer = .4;
+      playSound('error');
+      if (mini.traceMistakes >= 3) failMini('面条断了三次，再试一次');
     }
     if (mini.traceIndex >= mini.tracePoints.length) {
       mini.tracing = false;
@@ -2297,6 +2406,10 @@ window.JOURNEY_DATA = {
       playSound('complete');
       mini.finishAt = mini.elapsed + .55;
     }
+  }
+
+  function updatePlant(mini, dt) {
+    if (mini.elapsed > mini.timeLimit) failMini('农时已过，再试一次');
   }
 
   function updateNoodle(mini, dt) {
@@ -2330,7 +2443,13 @@ window.JOURNEY_DATA = {
     const mini = state.mini;
     if (!mini || mini.type !== 'dew' || mini.finished) return;
     const drop = mini.drops.find(item => !item.caught && item.life > 0 && distance(point, item) < 42);
-    if (!drop) return;
+    if (!drop) {
+      mini.mistakes += 1;
+      mini.flash = '点到叶子上了';
+      mini.flashTimer = .3;
+      playSound('error');
+      return;
+    }
     drop.caught = true;
     mini.caught += 1;
     mini.flash = '露水入盅';
@@ -2340,8 +2459,11 @@ window.JOURNEY_DATA = {
   }
 
   function updateDew(mini, dt) {
+    if (mini.elapsed > mini.timeLimit) { failMini('太阳升高，露水散了'); return; }
     mini.drops.forEach((drop, index) => {
       if (drop.caught) return;
+      drop.x = clamp(drop.x + Math.sin(mini.elapsed * 2.1 + index) * dt * 22, 110, MINI.width - 110);
+      drop.y = clamp(drop.y + dt * 8, 120, 400);
       drop.life -= dt;
       if (drop.life <= 0) {
         const turn = mini.respawnIndex + index;
@@ -2395,6 +2517,7 @@ window.JOURNEY_DATA = {
   }
 
   function updateClimb(mini, dt) {
+    if (mini.elapsed > mini.timeLimit) { failMini('天色暗了，山亭还没到'); return; }
     if (mini.finishAt && mini.elapsed >= mini.finishAt) finishMini();
   }
 
@@ -2403,15 +2526,52 @@ window.JOURNEY_DATA = {
     if (!mini || mini.type !== 'shake' || mini.finished || mini.finishAt || mini.fruits <= 0) return;
     mini.fruits -= 1;
     mini.shakeCount += 1;
-    mini.flash = mini.fruits > 0 ? `又落下一颗 · 还剩 ${mini.fruits}` : '柿子落满竹篮';
+    mini.falling.push({ x: 310 + ((mini.shakeCount * 113) % 340), y: 180, vy: 88 + mini.shakeCount * 5 });
+    mini.flash = '柿子落下了，移动竹篮';
     mini.flashTimer = .4;
-    playSound('correct');
-    if (mini.fruits <= 0) mini.finishAt = mini.elapsed + .7;
+    playSound('tick');
   }
 
   function updateShake(mini, dt) {
+    if (mini.elapsed > mini.timeLimit) { failMini('柿子没接够，再试一次'); return; }
     mini.treeSway *= Math.pow(.035, dt);
+    for (let i = mini.falling.length - 1; i >= 0; i -= 1) {
+      const fruit = mini.falling[i];
+      fruit.y += fruit.vy * dt;
+      if (fruit.y >= 445) {
+        if (Math.abs(fruit.x - mini.basketX) < 72) {
+          mini.caught += 1;
+          mini.flash = '接住一颗';
+          mini.flashTimer = .25;
+          playSound('correct');
+        } else {
+          mini.mistakes += 1;
+          mini.flash = '柿子摔了';
+          mini.flashTimer = .3;
+          playSound('error');
+        }
+        mini.falling.splice(i, 1);
+      }
+    }
+    if (mini.caught >= mini.targetFruits && !mini.finishAt) mini.finishAt = mini.elapsed + .55;
+    if (mini.fruits <= 0 && mini.falling.length === 0 && mini.caught < mini.targetFruits) failMini('柿子不够了，再摇一次');
     if (mini.finishAt && mini.elapsed >= mini.finishAt) finishMini();
+  }
+
+  function updateHang(mini, dt) {
+    if (mini.elapsed > mini.timeLimit) failMini('太阳落山了，再晒一次');
+  }
+
+  function updateWipe(mini, dt) {
+    if (mini.elapsed > mini.timeLimit) failMini('雪又积起来了，再扫一次');
+  }
+
+  function updatePour(mini, dt) {
+    if (mini.elapsed > mini.timeLimit) failMini('粥还没配好，再试一次');
+  }
+
+  function updateSweep(mini, dt) {
+    if (mini.elapsed > mini.timeLimit) failMini('屋里还没扫净');
   }
 
   function drawMiniBackdrop(ctx, mini) {
@@ -2578,6 +2738,86 @@ window.JOURNEY_DATA = {
     ctx.restore();
   }
 
+  function drawBambooBasket(ctx, x, y, width = 120, tone = '#c99645') {
+    const h = width * .55;
+    ctx.save(); ctx.translate(x, y);
+    ctx.fillStyle = 'rgba(65,61,45,.12)'; ctx.beginPath(); ctx.ellipse(0, h * .55, width * .48, h * .16, 0, 0, TAU); ctx.fill();
+    ctx.fillStyle = tone;
+    ctx.beginPath();
+    ctx.moveTo(-width * .48, -h * .18); ctx.lineTo(width * .48, -h * .18);
+    ctx.lineTo(width * .36, h * .4); ctx.quadraticCurveTo(0, h * .62, -width * .36, h * .4); ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = '#76502d'; ctx.lineWidth = Math.max(2, width * .025); ctx.stroke();
+    ctx.strokeStyle = 'rgba(255,245,201,.55)'; ctx.lineWidth = Math.max(1, width * .015);
+    for (let i = -2; i <= 2; i += 1) {
+      ctx.beginPath(); ctx.moveTo(i * width * .16, -h * .1); ctx.lineTo(i * width * .12, h * .38); ctx.stroke();
+    }
+    for (let i = 0; i < 3; i += 1) {
+      const yy = h * (.02 + i * .12);
+      ctx.beginPath(); ctx.moveTo(-width * .4, yy); ctx.quadraticCurveTo(0, yy + h * .08, width * .4, yy); ctx.stroke();
+    }
+    ctx.strokeStyle = '#8a6035'; ctx.lineWidth = Math.max(3, width * .04);
+    ctx.beginPath(); ctx.arc(0, -h * .18, width * .5, Math.PI * .06, Math.PI * .94, true); ctx.stroke();
+    ctx.restore();
+  }
+
+  function drawCup(ctx, x, y, size = 70) {
+    ctx.save(); ctx.translate(x, y);
+    ctx.fillStyle = 'rgba(68,95,96,.13)'; ctx.beginPath(); ctx.ellipse(0, size * .36, size * .5, size * .13, 0, 0, TAU); ctx.fill();
+    ctx.fillStyle = '#f6f2e4'; ctx.beginPath();
+    ctx.moveTo(-size * .4, -size * .2); ctx.quadraticCurveTo(-size * .34, size * .38, 0, size * .42);
+    ctx.quadraticCurveTo(size * .34, size * .38, size * .4, -size * .2); ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = '#7ca8b5'; ctx.lineWidth = 2; ctx.stroke();
+    ctx.strokeStyle = '#5c98ad'; ctx.lineWidth = Math.max(2, size * .045);
+    ctx.beginPath(); ctx.moveTo(-size * .34, size * .02); ctx.quadraticCurveTo(0, size * .12, size * .34, size * .02); ctx.stroke();
+    ctx.fillStyle = 'rgba(150,225,239,.75)'; ctx.beginPath(); ctx.ellipse(0, -size * .17, size * .33, size * .08, 0, 0, TAU); ctx.fill();
+    ctx.restore();
+  }
+
+  function drawClayPot(ctx, x, y, size = 140) {
+    ctx.save(); ctx.translate(x, y);
+    ctx.fillStyle = 'rgba(81,56,39,.13)'; ctx.beginPath(); ctx.ellipse(0, size * .34, size * .56, size * .16, 0, 0, TAU); ctx.fill();
+    ctx.fillStyle = '#8d5c3f'; ctx.beginPath();
+    ctx.moveTo(-size * .42, -size * .13); ctx.quadraticCurveTo(-size * .48, size * .38, 0, size * .4);
+    ctx.quadraticCurveTo(size * .48, size * .38, size * .42, -size * .13); ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = '#5c3a2a'; ctx.lineWidth = 3; ctx.stroke();
+    ctx.fillStyle = '#c88456'; ctx.beginPath(); ctx.ellipse(0, -size * .13, size * .46, size * .13, 0, 0, TAU); ctx.fill();
+    ctx.strokeStyle = '#6d422d'; ctx.lineWidth = 4;
+    ctx.beginPath(); ctx.arc(-size * .48, -size * .02, size * .17, Math.PI * .45, Math.PI * 1.45); ctx.stroke();
+    ctx.beginPath(); ctx.arc(size * .48, -size * .02, size * .17, -Math.PI * .45, Math.PI * .55); ctx.stroke();
+    ctx.strokeStyle = 'rgba(255,255,255,.48)'; ctx.lineWidth = 3;
+    for (let i = -1; i <= 1; i += 1) {
+      ctx.beginPath(); ctx.moveTo(i * size * .16, -size * .25); ctx.bezierCurveTo(i * size * .08, -size * .48, i * size * .24, -size * .58, i * size * .12, -size * .68); ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  function drawSnowPile(ctx, x, y, radius = 55) {
+    ctx.save(); ctx.translate(x, y);
+    ctx.fillStyle = 'rgba(106,145,162,.16)'; ctx.beginPath(); ctx.ellipse(0, radius * .28, radius * 1.05, radius * .45, 0, 0, TAU); ctx.fill();
+    ctx.fillStyle = '#fbfeff'; ctx.beginPath();
+    ctx.moveTo(-radius, radius * .15); ctx.bezierCurveTo(-radius * .8, -radius * .7, -radius * .15, -radius, radius * .12, -radius * .72);
+    ctx.bezierCurveTo(radius * .72, -radius * .9, radius, -radius * .08, radius, radius * .2);
+    ctx.quadraticCurveTo(0, radius * .58, -radius, radius * .15); ctx.fill();
+    ctx.strokeStyle = '#b8e1ed'; ctx.lineWidth = 3; ctx.stroke();
+    ctx.fillStyle = 'rgba(164,216,230,.55)';
+    [-.48, 0, .48].forEach(dx => { ctx.beginPath(); ctx.arc(radius * dx, radius * .18, radius * .12, 0, TAU); ctx.fill(); });
+    ctx.restore();
+  }
+
+  function drawDoughBall(ctx, x, y, radius = 34, complete = false) {
+    ctx.save(); ctx.translate(x, y);
+    ctx.fillStyle = 'rgba(92,75,56,.12)'; ctx.beginPath(); ctx.ellipse(0, radius * .8, radius * .96, radius * .25, 0, 0, TAU); ctx.fill();
+    ctx.fillStyle = complete ? '#f7f1df' : '#ead0a4'; ctx.beginPath(); ctx.arc(0, 0, radius, 0, TAU); ctx.fill();
+    ctx.strokeStyle = complete ? '#8eb4bf' : '#b98b55'; ctx.lineWidth = 3; ctx.stroke();
+    ctx.strokeStyle = 'rgba(255,255,255,.62)'; ctx.lineWidth = Math.max(2, radius * .08);
+    ctx.beginPath(); ctx.arc(-radius * .12, -radius * .08, radius * .48, Math.PI * .95, Math.PI * 1.65); ctx.stroke();
+    if (!complete) {
+      ctx.strokeStyle = 'rgba(139,95,52,.28)'; ctx.lineWidth = 1.5;
+      for (let i = 0; i < 3; i += 1) { ctx.beginPath(); ctx.arc(0, 0, radius * (.25 + i * .18), i * .7, i * .7 + 2.2); ctx.stroke(); }
+    }
+    ctx.restore();
+  }
+
   function drawCollect(ctx, mini) {
     const meta = DATA.seasons[mini.term.season];
     drawMiniBackdrop(ctx, mini);
@@ -2609,20 +2849,9 @@ window.JOURNEY_DATA = {
       ctx.fillText(item.name, 0, 29);
       ctx.restore();
     });
-    const bx = mini.basketX;
-    ctx.save();
-    ctx.translate(bx, 490);
-    ctx.fillStyle = 'rgba(56,73,49,.12)';
-    ctx.beginPath(); ctx.ellipse(0, 54, 58, 15, 0, 0, TAU); ctx.fill();
-    ctx.fillStyle = meta.color;
-    ctx.beginPath(); ctx.moveTo(-62, -12); ctx.lineTo(62, -12); ctx.lineTo(46, 48); ctx.quadraticCurveTo(0, 66, -46, 48); ctx.closePath(); ctx.fill();
-    ctx.strokeStyle = 'rgba(255,255,255,.8)'; ctx.lineWidth = 4;
-    ctx.beginPath(); ctx.ellipse(0, -12, 63, 18, 0, 0, TAU); ctx.stroke();
-    ctx.fillStyle = '#fff';
-    ctx.font = '600 20px "Songti SC", serif';
-    ctx.textAlign = 'center';
-    ctx.fillText('接', 0, 20);
-    ctx.restore();
+    drawBambooBasket(ctx, mini.basketX, 490, 132, '#b9863d');
+    const collectedGlow = mini.collected > 0 ? Math.min(.35, mini.collected * .035) : 0;
+    if (collectedGlow) { ctx.fillStyle = `rgba(255,244,185,${collectedGlow})`; ctx.beginPath(); ctx.arc(mini.basketX, 480, 58, 0, TAU); ctx.fill(); }
     miniFlashText(ctx, mini);
   }
 
@@ -2724,15 +2953,14 @@ window.JOURNEY_DATA = {
     mini.game.categories.forEach((category, index) => {
       const x = MINI.width / 2 - totalW / 2 + index * 232;
       const y = 390;
-      roundedRect(ctx, x, y, 210, 92, 20);
-      ctx.fillStyle = index === 0 ? '#f7e4c1' : index === 1 ? '#dff1dc' : '#e4e8f7';
-      ctx.fill();
-      ctx.strokeStyle = 'rgba(45,67,51,.12)'; ctx.lineWidth = 2; ctx.stroke();
-      drawObjectIcon(ctx, category.name, x + 105, y + 34, 44);
+      drawBambooBasket(ctx, x + 105, y + 58, 180, index === 0 ? '#d7b164' : index === 1 ? '#aecb9b' : '#b6c0d2');
+      ctx.fillStyle = 'rgba(255,253,244,.88)';
+      ctx.beginPath(); ctx.arc(x + 105, y + 13, 23, 0, TAU); ctx.fill();
+      drawObjectIcon(ctx, category.name, x + 105, y + 12, 34);
       ctx.fillStyle = meta.ink;
       ctx.font = '600 13px "PingFang SC", sans-serif';
       ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-      ctx.fillText(category.name, x + 105, y + 72);
+      ctx.fillText(category.name, x + 105, y + 86);
       mini.buttons.push({ x, y, w: 210, h: 92, index });
     });
     ctx.fillStyle = meta.ink;
@@ -2884,10 +3112,13 @@ window.JOURNEY_DATA = {
       ctx.rotate(TAU / 8); ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(0, -62); ctx.stroke();
     }
     ctx.restore();
-    ctx.fillStyle = 'rgba(113,197,225,.7)';
-    roundedRect(ctx, 248, 320, 464, 22, 11); ctx.fill();
-    ctx.fillStyle = meta.color;
-    roundedRect(ctx, 248, 320, 464 * mini.waterLevel, 22, 11); ctx.fill();
+    ctx.fillStyle = 'rgba(113,197,225,.32)';
+    roundedRect(ctx, 248, 310, 464, 34, 17); ctx.fill();
+    ctx.fillStyle = 'rgba(91,170,91,.32)';
+    ctx.fillRect(248 + 464 * .34, 310, 464 * .48, 34);
+    ctx.fillStyle = '#68bcd3';
+    roundedRect(ctx, 248, 310, 464 * mini.waterLevel, 34, 17); ctx.fill();
+    ctx.strokeStyle = 'rgba(52,92,77,.42)'; ctx.lineWidth = 2; ctx.strokeRect(248 + 464 * .34, 310, 464 * .48, 34);
     mini.buttons.forEach(button => {
       const active = mini.lastSide === button.index;
       roundedRect(ctx, button.x, button.y - mini.pumpPulse * 5, button.w, button.h, 22);
@@ -2899,33 +3130,49 @@ window.JOURNEY_DATA = {
       ctx.fillText(button.index === 0 ? 'A / 左键' : 'D / 右键', button.x + button.w / 2, button.y + 73 - mini.pumpPulse * 5);
     });
     ctx.fillStyle = meta.ink; ctx.font = '600 14px "PingFang SC", sans-serif';
-    ctx.fillText('踩踏 ' + mini.strokes + ' / ' + (mini.game.strokes || 8), MINI.width / 2, 520);
+    ctx.fillText('稳定供水 ' + mini.holdTime.toFixed(1) + ' / ' + mini.targetSeconds + ' 秒', MINI.width / 2, 520);
     miniFlashText(ctx, mini);
   }
 
   function drawPlant(ctx, mini) {
     const meta = DATA.seasons[mini.term.season];
     drawMiniBackdrop(ctx, mini);
+    const timeLeft = Math.max(0, mini.timeLimit - mini.elapsed);
+    roundedRect(ctx, 64, 30, MINI.width - 128, 9, 5);
+    ctx.fillStyle = 'rgba(255,255,255,.72)'; ctx.fill();
+    roundedRect(ctx, 64, 30, (MINI.width - 128) * (timeLeft / mini.timeLimit), 9, 5);
+    ctx.fillStyle = timeLeft < 8 ? '#d86046' : meta.color; ctx.fill();
     ctx.fillStyle = meta.ink; ctx.textAlign = 'center'; ctx.font = '600 15px "PingFang SC", sans-serif';
-    ctx.fillText('从秧盘拖出秧苗，填满九块水田格', MINI.width / 2, 62);
+    ctx.fillText('稻秧、豆苗、玉米苗分别种进对应田垄', MINI.width / 2, 62);
     mini.plots.forEach(plot => {
       roundedRect(ctx, plot.x - 62, plot.y - 34, 124, 68, 15);
-      ctx.fillStyle = plot.planted ? 'rgba(105,184,100,.9)' : 'rgba(178,230,238,.6)'; ctx.fill();
-      ctx.strokeStyle = plot.planted ? '#fff' : 'rgba(72,134,131,.38)'; ctx.lineWidth = 2; ctx.stroke();
-      ctx.fillStyle = plot.planted ? '#fff' : '#4f7c77'; ctx.font = '600 18px "Songti SC", serif';
-      ctx.fillText(plot.planted ? '秧' : '田', plot.x, plot.y + 5);
+      ctx.fillStyle = plot.planted ? 'rgba(95,159,88,.9)' : 'rgba(162,217,221,.62)'; ctx.fill();
+      ctx.strokeStyle = plot.planted ? '#f7eab9' : 'rgba(72,134,131,.42)'; ctx.lineWidth = 2; ctx.stroke();
+      ctx.fillStyle = 'rgba(116,82,49,.32)';
+      ctx.beginPath(); ctx.ellipse(plot.x, plot.y + 20, 41, 9, 0, 0, TAU); ctx.fill();
+      ctx.save();
+      ctx.globalAlpha = plot.planted ? 1 : .34;
+      drawObjectIcon(ctx, mini.game.crops[plot.crop].name, plot.x, plot.y - 2, plot.planted ? 54 : 44);
+      ctx.restore();
     });
-    ctx.fillStyle = 'rgba(240,210,126,.84)';
-    roundedRect(ctx, 295, 458, 370, 70, 22); ctx.fill();
-    ctx.fillStyle = meta.ink; ctx.font = '600 18px "Songti SC", serif';
-    ctx.fillText('秧  盘', MINI.width / 2, 496);
-    if (mini.dragging) {
-      ctx.fillStyle = meta.color; ctx.beginPath(); ctx.arc(mini.pointerX, mini.pointerY, 24, 0, TAU); ctx.fill();
-      ctx.fillStyle = '#fff'; ctx.font = '600 16px "Songti SC", serif'; ctx.fillText('秧', mini.pointerX, mini.pointerY + 2);
+    const trayY = 485;
+    ctx.fillStyle = 'rgba(239,210,135,.72)';
+    roundedRect(ctx, 82, 430, 796, 104, 25); ctx.fill();
+    (mini.game.crops || []).forEach((crop, index) => {
+      const x = 220 + index * 260;
+      const active = mini.selectedCrop === index;
+      drawBambooBasket(ctx, x, trayY + 10, 150, active ? '#d6a24c' : '#b98a43');
+      ctx.fillStyle = active ? 'rgba(255,247,207,.92)' : 'rgba(255,253,244,.64)';
+      ctx.beginPath(); ctx.arc(x, trayY - 25, 34, 0, TAU); ctx.fill();
+      drawObjectIcon(ctx, crop.name, x, trayY - 25, 54);
+      ctx.fillStyle = meta.ink; ctx.font = '600 12px "PingFang SC", sans-serif'; ctx.textBaseline = 'middle';
+      ctx.fillText(crop.name, x, 438 + 2);
+    });
+    if (mini.dragging && mini.selectedCrop !== null) {
+      drawObjectIcon(ctx, mini.game.crops[mini.selectedCrop].name, mini.pointerX, mini.pointerY, 62);
     }
     miniFlashText(ctx, mini);
   }
-
   function drawNoodle(ctx, mini) {
     const meta = DATA.seasons[mini.term.season];
     drawMiniBackdrop(ctx, mini);
@@ -2952,15 +3199,20 @@ window.JOURNEY_DATA = {
     ctx.strokeStyle = meta.color; ctx.lineWidth = 3; ctx.stroke();
     ctx.fillStyle = meta.ink; ctx.font = '600 12px "PingFang SC", sans-serif';
     ctx.fillText('拖', start.x, start.y + 36);
-    ctx.fillText('完成 ' + mini.traceIndex + ' / ' + mini.tracePoints.length, MINI.width / 2, 520);
+    ctx.fillText('完成 ' + mini.traceIndex + ' / ' + mini.tracePoints.length + '  ·  偏离 ' + mini.traceMistakes + ' / 3', MINI.width / 2, 520);
     miniFlashText(ctx, mini);
   }
 
   function drawHang(ctx, mini) {
     const meta = DATA.seasons[mini.term.season];
     drawMiniBackdrop(ctx, mini);
+    const hangTime = Math.max(0, mini.timeLimit - mini.elapsed);
+    roundedRect(ctx, 64, 30, MINI.width - 128, 9, 5);
+    ctx.fillStyle = 'rgba(255,255,255,.72)'; ctx.fill();
+    roundedRect(ctx, 64, 30, (MINI.width - 128) * (hangTime / mini.timeLimit), 9, 5);
+    ctx.fillStyle = hangTime < 7 ? '#d86046' : meta.color; ctx.fill();
     ctx.fillStyle = meta.ink; ctx.textAlign = 'center'; ctx.font = '600 15px "PingFang SC", sans-serif';
-    ctx.fillText('把作物拖进同色晒架', MINI.width / 2, 60);
+    ctx.fillText('把九件作物拖进同色晒架', MINI.width / 2, 60);
     mini.game.categories.forEach((category, index) => {
       const x = index === 0 ? 110 : 540;
       ctx.fillStyle = index === 0 ? 'rgba(215,91,65,.2)' : 'rgba(232,174,61,.23)';
@@ -2977,18 +3229,12 @@ window.JOURNEY_DATA = {
       if (item.hung) {
         const side = item.cat === 0 ? 110 : 540;
         const slot = mini.items.slice(0, item.index).filter(piece => piece.cat === item.cat).length;
-        ctx.fillStyle = 'rgba(255,253,244,.88)';
-        ctx.beginPath(); ctx.arc(side + 90 + slot * 67, 218 + (slot % 2) * 70, 27, 0, TAU); ctx.fill();
-        drawObjectIcon(ctx, item.name, side + 90 + slot * 67, 218 + (slot % 2) * 70, 40);
+        drawObjectIcon(ctx, item.name, side + 68 + (slot % 3) * 86, 210 + Math.floor(slot / 3) * 70, 42);
       }
     });
     mini.items.forEach(item => {
       if (item.hung) return;
-      ctx.fillStyle = 'rgba(255,253,244,.92)';
-      ctx.beginPath(); ctx.arc(item.x, item.y, 35, 0, TAU); ctx.fill();
-      ctx.strokeStyle = item.cat === 0 ? '#d75b41' : '#d3a13b'; ctx.lineWidth = 2; ctx.stroke();
-      drawObjectIcon(ctx, item.name, item.x, item.y - 2, 54);
-      ctx.fillStyle = meta.ink; ctx.font = '600 9px "PingFang SC", sans-serif'; ctx.textAlign = 'center'; ctx.fillText(item.name, item.x, item.y + 29);
+      drawObjectIcon(ctx, item.name, item.x, item.y - 2, 58);
     });
     if (mini.dragging !== null) {
       const item = mini.items[mini.dragging];
@@ -3044,9 +3290,7 @@ window.JOURNEY_DATA = {
       ctx.strokeStyle = '#76b9c9'; ctx.lineWidth = 2; ctx.stroke();
       ctx.globalAlpha = 1;
     });
-    ctx.fillStyle = 'rgba(255,253,244,.86)'; ctx.beginPath(); ctx.ellipse(820, 460, 70, 30, 0, 0, TAU); ctx.fill();
-    ctx.strokeStyle = meta.color; ctx.lineWidth = 3; ctx.stroke();
-    ctx.fillStyle = meta.ink; ctx.font = '600 15px "Songti SC", serif'; ctx.fillText('盅', 820, 465);
+    drawCup(ctx, 820, 455, 112);
     ctx.fillStyle = meta.ink; ctx.font = '600 14px "PingFang SC", sans-serif';
     ctx.fillText('清露 ' + mini.caught + ' / ' + mini.drops.length, MINI.width / 2, 525);
     miniFlashText(ctx, mini);
@@ -3098,27 +3342,28 @@ window.JOURNEY_DATA = {
   function drawShake(ctx, mini) {
     const meta = DATA.seasons[mini.term.season];
     drawMiniBackdrop(ctx, mini);
+    const timeLeft = Math.max(0, mini.timeLimit - mini.elapsed);
+    roundedRect(ctx, 64, 30, MINI.width - 128, 9, 5);
+    ctx.fillStyle = 'rgba(255,255,255,.72)'; ctx.fill();
+    roundedRect(ctx, 64, 30, (MINI.width - 128) * (timeLeft / mini.timeLimit), 9, 5);
+    ctx.fillStyle = timeLeft < 7 ? '#d86046' : meta.color; ctx.fill();
     ctx.fillStyle = meta.ink; ctx.textAlign = 'center'; ctx.font = '600 15px "PingFang SC", sans-serif';
-    ctx.fillText('按住树干左右快速摇动，让柿子落入竹篮', MINI.width / 2, 58);
+    ctx.fillText('摇动树干，再移动竹篮接住柿子', MINI.width / 2, 58);
     ctx.save(); ctx.translate(MINI.width / 2, 315); ctx.rotate((mini.treeSway || 0) * Math.PI / 180);
     ctx.fillStyle = '#8b6038'; roundedRect(ctx, -20, -60, 40, 265, 14); ctx.fill();
-    ctx.fillStyle = 'rgba(255,255,255,.08)'; ctx.beginPath(); ctx.arc(-80, -90, 96, 0, TAU); ctx.fill();
-    ctx.fillStyle = '#df9334';
+    ctx.fillStyle = 'rgba(124,174,92,.2)'; ctx.beginPath(); ctx.arc(-80, -90, 96, 0, TAU); ctx.fill();
     for (let i = 0; i < mini.fruits; i += 1) {
       const angle = -Math.PI * .88 + i * .45;
       const x = Math.cos(angle) * (82 + (i % 3) * 28); const y = -90 + Math.sin(angle) * (75 + (i % 2) * 20);
-      ctx.beginPath(); ctx.arc(x, y, 18, 0, TAU); ctx.fill();
-      ctx.fillStyle = '#fff3d0'; ctx.font = '600 11px "Songti SC", serif'; ctx.fillText('柿', x, y + 4); ctx.fillStyle = '#df9334';
+      drawObjectIcon(ctx, '柿子', x, y, 39);
     }
     ctx.restore();
-    ctx.fillStyle = 'rgba(240,208,123,.75)'; ctx.beginPath(); ctx.ellipse(720, 470, 90, 30, 0, 0, TAU); ctx.fill();
-    ctx.strokeStyle = meta.color; ctx.lineWidth = 4; ctx.stroke();
-    ctx.fillStyle = meta.ink; ctx.font = '600 16px "PingFang SC", serif'; ctx.fillText('竹篮', 720, 476);
-    ctx.fillStyle = '#748178'; ctx.font = '600 13px "PingFang SC", sans-serif';
-    ctx.fillText('已摇下 ' + mini.shakeCount + ' / ' + (mini.game.fruits || 5), MINI.width / 2, 522);
+    mini.falling.forEach(fruit => drawObjectIcon(ctx, '柿子', fruit.x, fruit.y, 44));
+    drawBambooBasket(ctx, mini.basketX, 462, 146, '#b9843e');
+    ctx.fillStyle = meta.ink; ctx.font = '600 13px "PingFang SC", sans-serif';
+    ctx.fillText('已接住 ' + mini.caught + ' / ' + mini.targetFruits + '  ·  树上 ' + mini.fruits, MINI.width / 2, 530);
     miniFlashText(ctx, mini);
   }
-
   function drawMiniCompletion(ctx, mini) {
     ctx.save();
     ctx.fillStyle = 'rgba(255,253,244,.84)';
@@ -3158,21 +3403,21 @@ window.JOURNEY_DATA = {
       path: ['左右操控', '收集目标', '避开障碍'],
       assemble: ['先架竹骨', '再覆纸面', '系尾线轴'],
       weather: ['看天空变化', '限时选晒收', '连续判断'],
-      fold: ['按住面皮', '向中心折合', '捏紧饺子'],
+      fold: ['点击放馅', '向右折合', '点击捏边'],
       salt: ['按住盐罐', '来回拖动', '覆盖肉条'],
-      wipe: ['按住扫帚', '拖过积雪', '清出道路'],
-      roll: ['按住面团', '画圈搓动', '做圆汤圆'],
-      pour: ['按序选料', '拖进粥锅', '熬成暖粥'],
-      sweep: ['快速划过', '扫起尘团', '清空角落'],
+      wipe: ['按住扫帚', '拖过八堆雪', '限时清路'],
+      roll: ['按住面团', '持续画圈', '每颗两圈半'],
+      pour: ['识别乱序食材', '按序拖进锅', '限时熬粥'],
+      sweep: ['快速划过', '扫净九处', '避开瓷器'],
       duel: ['左右瞄准', '点击碰蛋', '赢下三局'],
-      pump: ['交替踩踏', '推动水车', '灌满水田'],
-      plant: ['拖出秧苗', '对准田格', '栽满九格'],
+      pump: ['盯住水位', '左右交替', '累计稳定八秒'],
+      plant: ['分清三种苗', '拖进同类田格', '限时栽满九格'],
       noodle: ['按住面头', '沿虚线拖动', '拉出长面'],
-      hang: ['分清红黄', '拖到同色架', '晒满秋色'],
+      hang: ['分清红黄', '拖到同色晒架', '限时挂满九件'],
       lantern: ['看准礁石', '点击两岸', '推灯到岸'],
-      dew: ['露珠将散', '逐颗点击', '收满八滴'],
-      moon: ['观察月纹', '点击礼盘', '三圈归位'],
-      climb: ['从低到高', '依次踏石', '登上山亭'],
+      dew: ['露珠会移动', '准确点入瓷盅', '收满十二滴'],
+      moon: ['观察联动', '规划点击', '三圈归位'],
+      climb: ['从低到高', '限时踏石', '登上山亭'],
       shake: ['按住树干', '左右摇动', '收满柿子']
     }[mini.type] || ['观察场景', '完成动作', '点亮节气'];
     ctx.fillStyle = meta.ink;
@@ -3264,7 +3509,7 @@ window.JOURNEY_DATA = {
     else if (mini.type === 'pour') text = `${mini.index} / ${mini.game.ingredients.length}`;
     else if (mini.type === 'sweep') text = `${mini.spots.filter(s => s.cleared).length} / ${mini.spots.length}`;
     else if (mini.type === 'duel') text = `胜局 ${mini.successes} / ${mini.game.rounds}`;
-    else if (mini.type === 'pump') text = `踩踏 ${mini.strokes} / ${mini.game.strokes}`;
+    else if (mini.type === 'pump') text = `稳定 ${mini.holdTime.toFixed(1)} / ${mini.targetSeconds} 秒`;
     else if (mini.type === 'plant') text = `秧苗 ${mini.planted} / ${mini.plots.length}`;
     else if (mini.type === 'noodle') text = `拉面 ${mini.traceIndex} / ${mini.tracePoints.length}`;
     else if (mini.type === 'hang') text = `挂晒 ${mini.hung} / ${mini.items.length}`;
@@ -3272,7 +3517,7 @@ window.JOURNEY_DATA = {
     else if (mini.type === 'dew') text = `清露 ${mini.caught} / ${mini.drops.length}`;
     else if (mini.type === 'moon') text = `归位 ${mini.offsets.filter(offset => offset === 0).length} / 3`;
     else if (mini.type === 'climb') text = `石阶 ${mini.nextStone} / ${mini.stones.length}`;
-    else if (mini.type === 'shake') text = `柿子 ${mini.shakeCount} / ${mini.game.fruits}`;
+    else if (mini.type === 'shake') text = `接住 ${mini.caught} / ${mini.targetFruits} · 树上 ${mini.fruits}`;
     els.miniProgress.textContent = text;
   }
 
@@ -3630,7 +3875,16 @@ window.JOURNEY_DATA = {
 
   function updateSalt(mini, dt) {
     if (mini.holding && mini.activeStrip >= 0 && mini.activeStrip < mini.coverage.length) {
-      mini.coverage[mini.activeStrip] = clamp(mini.coverage[mini.activeStrip] + dt * 1.6, 0, 1);
+      const strip = mini.activeStrip;
+      mini.coverage[strip] = clamp(mini.coverage[strip] + dt * 1.6, 0, 1);
+      if (mini.coverage[strip] > .95 && !mini.overSalted[strip]) {
+        mini.overSalted[strip] = true;
+        mini.coverage[strip] = .84;
+        mini.mistakes += 1;
+        mini.flash = '撒得太厚了';
+        mini.flashTimer = .4;
+        playSound('error');
+      }
       if (mini.coverage.every(value => value >= .82)) finishMini();
     }
   }
@@ -3827,27 +4081,41 @@ window.JOURNEY_DATA = {
   function drawFold(ctx, mini) {
     const meta = DATA.seasons[mini.term.season];
     drawMiniBackdrop(ctx, mini);
-    ctx.save();
-    ctx.translate(MINI.width / 2, 270);
-    ctx.fillStyle = '#f6dfb1';
-    ctx.beginPath(); ctx.ellipse(0, 0, 135, 92, 0, 0, TAU); ctx.fill();
-    ctx.strokeStyle = meta.color; ctx.lineWidth = 3; ctx.stroke();
-    ctx.strokeStyle = 'rgba(123,87,45,.35)'; ctx.lineWidth = 2; ctx.setLineDash([5,7]);
-    ctx.beginPath(); ctx.moveTo(0,-88); ctx.lineTo(0,88); ctx.stroke(); ctx.setLineDash([]);
-    ctx.fillStyle = '#d7a15b';
-    ctx.beginPath(); ctx.arc(0, 0, 28, 0, TAU); ctx.fill();
-    ctx.restore();
-    ctx.fillStyle = meta.ink; ctx.textAlign='center'; ctx.font='600 19px "PingFang SC", sans-serif';
-    ctx.fillText('按住左侧面皮，向右拖动折合', MINI.width/2, 420);
-    ctx.fillStyle='#748178'; ctx.font='600 13px "PingFang SC", sans-serif';
-    ctx.fillText(`已包好 ${mini.round} / ${mini.game.rounds}`, MINI.width/2, 455);
-    if (mini.foldDelta > 0) {
-      ctx.fillStyle = 'rgba(79,159,90,.25)';
-      roundedRect(ctx, MINI.width/2 - 135, 178, Math.min(135, mini.foldDelta), 184, 80); ctx.fill();
+    ctx.save(); ctx.translate(MINI.width / 2, 270);
+    if (mini.stage < 2) {
+      ctx.fillStyle = '#f3ddb0'; ctx.beginPath(); ctx.ellipse(0, 0, 150, 102, 0, 0, TAU); ctx.fill();
+      ctx.strokeStyle = '#bc8d58'; ctx.lineWidth = 3; ctx.stroke();
+      ctx.strokeStyle = 'rgba(132,91,52,.26)'; ctx.lineWidth = 2;
+      for (let i = -3; i <= 3; i += 1) { ctx.beginPath(); ctx.arc(0, 0, 36 + Math.abs(i) * 15, i * .21, i * .21 + 1.2); ctx.stroke(); }
+      if (mini.stage >= 1) {
+        ctx.fillStyle = '#c98246'; ctx.beginPath(); ctx.ellipse(0, 4, 40, 29, 0, 0, TAU); ctx.fill();
+        ctx.strokeStyle = '#9d5a32'; ctx.lineWidth = 2; ctx.stroke();
+        ctx.fillStyle = '#8eb95f';
+        [-17, 0, 17].forEach(dx => { ctx.beginPath(); ctx.arc(dx, -2, 5, 0, TAU); ctx.fill(); });
+      } else {
+        ctx.strokeStyle = 'rgba(130,93,55,.45)'; ctx.lineWidth = 3; ctx.setLineDash([6, 7]);
+        ctx.beginPath(); ctx.arc(0, 2, 42 + Math.sin(mini.elapsed * 3) * 3, 0, TAU); ctx.stroke(); ctx.setLineDash([]);
+      }
+      if (mini.foldDelta > 0) {
+        ctx.fillStyle = 'rgba(246,223,177,.82)';
+        ctx.beginPath(); ctx.moveTo(-150, -96); ctx.quadraticCurveTo(-150 + mini.foldDelta * 1.8, 0, -150, 96); ctx.closePath(); ctx.fill();
+      }
+    } else {
+      ctx.fillStyle = '#f3ddb0';
+      ctx.beginPath(); ctx.moveTo(-145, 42); ctx.quadraticCurveTo(-116, -72, 0, -82); ctx.quadraticCurveTo(116, -72, 145, 42); ctx.quadraticCurveTo(0, 106, -145, 42); ctx.fill();
+      ctx.strokeStyle = '#b7814d'; ctx.lineWidth = 3; ctx.stroke();
+      ctx.strokeStyle = '#9f6639'; ctx.lineWidth = 3;
+      for (let i = -3; i <= 3; i += 1) { ctx.beginPath(); ctx.arc(i * 22, 39 - Math.abs(i) * 3, 8, 0, Math.PI, false); ctx.stroke(); }
+      ctx.fillStyle = 'rgba(255,255,255,.35)'; ctx.beginPath(); ctx.ellipse(-42, -25, 30, 12, -.3, 0, TAU); ctx.fill();
     }
+    ctx.restore();
+    const instructions = ['点一下面皮中央，放入馅料', '按住面皮向右拖动折合', '点击饺子边缘，捏紧封口'];
+    ctx.fillStyle = meta.ink; ctx.textAlign='center'; ctx.font='600 19px "PingFang SC", sans-serif';
+    ctx.fillText(instructions[mini.stage], MINI.width/2, 420);
+    ctx.fillStyle='#748178'; ctx.font='600 13px "PingFang SC", sans-serif';
+    ctx.fillText(`已包好 ${mini.round} / ${mini.game.rounds}  ·  当前第 ${mini.round + 1} 只`, MINI.width/2, 455);
     miniFlashText(ctx, mini);
   }
-
   function drawSalt(ctx, mini) {
     const meta = DATA.seasons[mini.term.season];
     drawMiniBackdrop(ctx, mini);
@@ -3866,7 +4134,20 @@ window.JOURNEY_DATA = {
         const x=252+(i*61)%450, yy=y+10+(i*29)%50;
         ctx.fillStyle='rgba(255,255,255,.92)'; ctx.beginPath(); ctx.arc(x,yy,1.8,0,TAU); ctx.fill();
       }
+      ctx.fillStyle = mini.overSalted[index] ? 'rgba(198,82,58,.34)' : 'rgba(94,163,117,.22)';
+      roundedRect(ctx, 244, y + 76, 472, 8, 4); ctx.fill();
+      ctx.fillStyle = mini.overSalted[index] ? '#c6523a' : '#5f9d6d';
+      roundedRect(ctx, 244, y + 76, 472 * cover, 8, 4); ctx.fill();
     });
+    if (mini.holding) {
+      ctx.save(); ctx.translate(mini.pointerX, mini.pointerY);
+      ctx.fillStyle = '#f7f0df'; roundedRect(ctx, -18, -28, 36, 48, 10); ctx.fill();
+      ctx.strokeStyle = '#7fa3ad'; ctx.lineWidth = 2; ctx.stroke();
+      ctx.fillStyle = '#6b8b94'; roundedRect(ctx, -12, -34, 24, 10, 4); ctx.fill();
+      ctx.fillStyle = 'rgba(255,255,255,.9)';
+      for (let i = 0; i < 3; i += 1) { ctx.beginPath(); ctx.arc((i - 1) * 6, -29, 1.5, 0, TAU); ctx.fill(); }
+      ctx.restore();
+    }
     ctx.fillStyle=meta.ink; ctx.font='600 14px "PingFang SC", sans-serif';
     ctx.fillText(`覆盖 ${Math.round(mini.coverage.reduce((a,b)=>a+b,0) / mini.coverage.length * 100)}%`, MINI.width/2, 515);
     miniFlashText(ctx, mini);
@@ -3875,14 +4156,16 @@ window.JOURNEY_DATA = {
   function drawWipe(ctx, mini) {
     const meta = DATA.seasons[mini.term.season];
     drawMiniBackdrop(ctx, mini);
+    const wipeTime = Math.max(0, mini.timeLimit - mini.elapsed);
+    roundedRect(ctx, 64, 28, MINI.width - 128, 9, 5);
+    ctx.fillStyle = 'rgba(255,255,255,.72)'; ctx.fill();
+    roundedRect(ctx, 64, 28, (MINI.width - 128) * (wipeTime / mini.timeLimit), 9, 5);
+    ctx.fillStyle = wipeTime < 7 ? '#d86046' : meta.color; ctx.fill();
     ctx.fillStyle = meta.ink; ctx.textAlign='center'; ctx.font='600 15px "PingFang SC", sans-serif';
-    ctx.fillText('按住扫帚来回拖动，清除雪堆', MINI.width/2, 70);
+    ctx.fillText('按住扫帚拖过八处雪堆', MINI.width/2, 70);
     mini.patches.forEach(patch=>{
       if(patch.cleared) return;
-      ctx.fillStyle='rgba(255,255,255,.95)';
-      ctx.beginPath(); ctx.arc(patch.x,patch.y,patch.r,0,TAU); ctx.fill();
-      ctx.strokeStyle='rgba(143,211,232,.9)'; ctx.lineWidth=3; ctx.stroke();
-      ctx.fillStyle='#86a9b7'; ctx.font='600 17px "Songti SC", serif'; ctx.fillText('雪',patch.x,patch.y+6);
+      drawSnowPile(ctx, patch.x, patch.y, patch.r);
     });
     ctx.fillStyle='#6c8a97'; ctx.font='600 14px "PingFang SC", sans-serif';
     ctx.fillText(`已清扫 ${mini.patches.filter(p=>p.cleared).length} / ${mini.patches.length}`,MINI.width/2,520);
@@ -3896,30 +4179,31 @@ window.JOURNEY_DATA = {
     ctx.fillText('按住当前面团，画圈把它搓圆', MINI.width/2, 78);
     mini.centers.forEach((center,index)=>{
       const active=index===mini.round;
-      ctx.save(); ctx.translate(center.x,center.y);
       ctx.fillStyle=active?meta.pale:'rgba(255,255,255,.65)';
-      ctx.beginPath(); ctx.arc(0,0,index<mini.round?59:55,0,TAU); ctx.fill();
-      ctx.strokeStyle=index<mini.round?meta.color:'rgba(45,67,51,.18)'; ctx.lineWidth=3; ctx.stroke();
-      ctx.fillStyle=index<mini.round?meta.color:meta.ink; ctx.font='500 32px "Songti SC", serif'; ctx.textBaseline='middle';
-      ctx.fillText(index<mini.round?'圆':mini.term.glyph,0,3);
-      ctx.restore();
+      ctx.beginPath(); ctx.arc(center.x,center.y,index<mini.round?64:58,0,TAU); ctx.fill();
+      drawDoughBall(ctx, center.x, center.y, index<mini.round?45:41, index<mini.round);
     });
+    const turns = mini.rollTotal / TAU;
     ctx.fillStyle='#748178'; ctx.font='600 13px "PingFang SC", sans-serif';
-    ctx.fillText(`已完成 ${mini.round} / ${mini.game.rounds}`,MINI.width/2,455);
+    ctx.fillText(`已完成 ${mini.round} / ${mini.game.rounds}  ·  本颗 ${turns.toFixed(1)} / ${mini.game.targetTurns} 圈`,MINI.width/2,455);
     miniFlashText(ctx,mini);
   }
 
   function drawPour(ctx, mini) {
     const meta = DATA.seasons[mini.term.season];
     drawMiniBackdrop(ctx, mini);
+    const pourTime = Math.max(0, mini.timeLimit - mini.elapsed);
+    roundedRect(ctx, 64, 28, MINI.width - 128, 9, 5);
+    ctx.fillStyle = 'rgba(255,255,255,.72)'; ctx.fill();
+    roundedRect(ctx, 64, 28, (MINI.width - 128) * (pourTime / mini.timeLimit), 9, 5);
+    ctx.fillStyle = pourTime < 5 ? '#d86046' : meta.color; ctx.fill();
     ctx.fillStyle = meta.ink; ctx.textAlign='center'; ctx.font='600 15px "PingFang SC", sans-serif';
-    ctx.fillText('按顺序把食材拖进粥锅', MINI.width/2, 72);
-    ctx.fillStyle='#d9c2a0'; ctx.beginPath(); ctx.ellipse(480,335,104,66,0,0,TAU); ctx.fill();
-    ctx.strokeStyle=meta.color; ctx.lineWidth=3; ctx.stroke();
-    ctx.fillStyle=meta.ink; ctx.font='500 28px "Songti SC", serif'; ctx.textBaseline='middle'; ctx.fillText('粥',480,340);
-    mini.game.ingredients.forEach((item,index)=>{
-      const used=index<mini.index;
-      const x=150+index*220, y=455;
+    ctx.fillText('按米、豆、枣、果的顺序下锅', MINI.width/2, 72);
+    drawClayPot(ctx, 480, 335, 174);
+    (mini.trayOrder || mini.game.ingredients.map((item,index)=>index)).forEach((itemIndex,slot)=>{
+      const item=mini.game.ingredients[itemIndex];
+      const used=itemIndex<mini.index;
+      const x=150+slot*220, y=455;
       roundedRect(ctx,x,y-38,120,76,16);
       ctx.fillStyle=used?meta.pale:'rgba(255,255,255,.9)'; ctx.fill();
       ctx.strokeStyle=used?meta.color:'rgba(45,67,51,.18)'; ctx.lineWidth=2; ctx.stroke();
@@ -3933,14 +4217,30 @@ window.JOURNEY_DATA = {
   function drawSweep(ctx, mini) {
     const meta = DATA.seasons[mini.term.season];
     drawMiniBackdrop(ctx, mini);
+    const sweepTime = Math.max(0, mini.timeLimit - mini.elapsed);
+    roundedRect(ctx, 64, 28, MINI.width - 128, 9, 5);
+    ctx.fillStyle = 'rgba(255,255,255,.72)'; ctx.fill();
+    roundedRect(ctx, 64, 28, (MINI.width - 128) * (sweepTime / mini.timeLimit), 9, 5);
+    ctx.fillStyle = sweepTime < 6 ? '#d86046' : meta.color; ctx.fill();
     ctx.fillStyle = meta.ink; ctx.textAlign='center'; ctx.font='600 15px "PingFang SC", sans-serif';
-    ctx.fillText('快速来回划过尘团，每个角落扫两次', MINI.width/2, 70);
+    ctx.fillText('扫净九处尘团，避开桌上的瓷器', MINI.width/2, 70);
+    mini.fragiles.forEach(vase => {
+      ctx.save(); ctx.translate(vase.x, vase.y);
+      ctx.fillStyle = vase.hit ? 'rgba(201,95,69,.65)' : '#7da9b4';
+      ctx.beginPath(); ctx.moveTo(-13,-24); ctx.quadraticCurveTo(-30,-2,-16,28); ctx.lineTo(16,28); ctx.quadraticCurveTo(30,-2,13,-24); ctx.closePath(); ctx.fill();
+      ctx.strokeStyle = 'rgba(255,255,255,.7)'; ctx.lineWidth = 2; ctx.stroke();
+      ctx.restore();
+    });
     mini.spots.forEach(spot=>{
       if(spot.cleared) return;
-      const alpha=.28 + (spot.hits||0)*.18;
+      const alpha=.32 + (spot.hits||0)*.18;
       ctx.fillStyle = 'rgba(112,104,87,' + alpha + ')';
-      ctx.beginPath(); ctx.arc(spot.x,spot.y,spot.r,0,TAU); ctx.fill();
-      ctx.fillStyle='rgba(255,255,255,.7)'; ctx.font='600 12px "PingFang SC", sans-serif'; ctx.fillText(spot.hits?'扫':'尘',spot.x,spot.y+4);
+      for (let i = 0; i < 5; i += 1) {
+        const a = i * TAU / 5 + spot.x * .01;
+        ctx.beginPath(); ctx.arc(spot.x + Math.cos(a) * spot.r * .45, spot.y + Math.sin(a) * spot.r * .32, spot.r * (.42 + (i % 2) * .12), 0, TAU); ctx.fill();
+      }
+      ctx.strokeStyle = 'rgba(83,74,59,.35)'; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.moveTo(spot.x - spot.r * .6, spot.y + spot.r * .2); ctx.lineTo(spot.x + spot.r * .55, spot.y - spot.r * .15); ctx.stroke();
     });
     ctx.fillStyle='#748178'; ctx.font='600 14px "PingFang SC", sans-serif';
     ctx.fillText(`已清理 ${mini.spots.filter(s=>s.cleared).length} / ${mini.spots.length}`,MINI.width/2,520);

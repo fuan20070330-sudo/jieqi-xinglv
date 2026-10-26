@@ -107,6 +107,14 @@ fs.mkdirSync(ARTIFACTS, { recursive: true });
   await page.waitForTimeout(900);
   await shot('08_冬之章_瑞雪.png', '冬之章地图、下雪特效与冬季节气碑');
 
+  await page.evaluate(() => { JourneyDebug.enterSeason('spring'); JourneyDebug.teleportToTerm('lichun'); });
+  await page.keyboard.press('e');
+  await page.waitForSelector('#miniOverlay:not([hidden])');
+  await page.click('#miniStartBtn');
+  await page.waitForTimeout(650);
+  await shot('10_立春竹篮与春盘.png', '立春：编织竹篮与春盘实物图形');
+  await page.click('#miniClose');
+
   await page.evaluate(() => {
     const data = JourneyDebug.getData();
     data.terms.forEach(term => { JourneyDebug.state.save.stations[term.id] = { complete: true, stars: 3, bestScore: 1000 }; });

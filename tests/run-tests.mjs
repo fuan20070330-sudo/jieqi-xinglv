@@ -58,23 +58,23 @@ for (const season of seasons) {
     } else if (term.game.type === 'duel') {
       assert.ok(term.game.rounds >= 3, `${id} 斗蛋回合不足`);
     } else if (term.game.type === 'pump') {
-      assert.ok(term.game.strokes >= 6, `${id} 水车踩踏次数不足`);
+      assert.ok(term.game.targetSeconds >= 6, `${id} 水车持续供水目标不足`);
     } else if (term.game.type === 'plant') {
-      assert.ok(term.game.slots >= 6, `${id} 插秧田格不足`);
+      assert.ok(term.game.slots >= 6 && term.game.crops?.length >= 3 && term.game.timeLimit > 0, `${id} 插秧作物匹配数据不足`);
     } else if (term.game.type === 'noodle') {
       assert.ok(term.game.points >= 10, `${id} 拉面路径节点不足`);
     } else if (term.game.type === 'hang') {
-      assert.ok(term.game.items.length >= 6 && term.game.categories.length === 2, `${id} 晒秋挂架数据不足`);
+      assert.ok(term.game.items.length >= 8 && term.game.categories.length === 2 && term.game.timeLimit > 0, `${id} 晒秋挂架数据不足`);
     } else if (term.game.type === 'lantern') {
       assert.ok(term.game.rocks >= 3, `${id} 河灯礁石不足`);
     } else if (term.game.type === 'dew') {
-      assert.ok(term.game.drops >= 6, `${id} 收露目标不足`);
+      assert.ok(term.game.drops >= 10 && term.game.timeLimit > 0, `${id} 收露目标不足`);
     } else if (term.game.type === 'moon') {
       assert.ok(term.game.rings === 3 && term.game.steps >= 6, `${id} 月盘校准数据不足`);
     } else if (term.game.type === 'climb') {
-      assert.ok(term.game.stones >= 8, `${id} 登高石阶不足`);
+      assert.ok(term.game.stones >= 10 && term.game.timeLimit > 0, `${id} 登高石阶不足`);
     } else if (term.game.type === 'shake') {
-      assert.ok(term.game.fruits >= 4, `${id} 摇树果实不足`);
+      assert.ok(term.game.fruits >= 6 && term.game.targetFruits >= 5 && term.game.timeLimit > 0, `${id} 摇树果实不足`);
     }
   }
 }
@@ -97,6 +97,8 @@ assert.ok(game.includes('Math.max(normalizeStars(previous.stars)') && game.inclu
 assert.ok(game.includes("jieqi-journey-save-v3") && game.includes('normalizeStars'), '应使用 v3 存档并归一化每关星级');
 assert.ok(game.includes('lastStars') && game.includes('attempts'), '应区分本局星级与历史最佳星级');
 assert.ok(game.includes('function drawObjectIcon'), '小游戏物件应使用程序化图形而非纯文字');
+assert.ok(game.includes('function drawBambooBasket') && game.includes('function drawClayPot') && game.includes('function drawCup'), '竹篮、锅具与瓷盅应使用图形组件');
+for (const placeholder of ["fillText('接'", "fillText('盅'", "fillText('雪'", "fillText('圆'", "fillText('粥'", "fillText('尘'"]) assert.ok(!game.includes(placeholder), `不应使用文字占位：${placeholder}`);
 assert.ok(game.includes("piece.kind === expected") && game.includes('function drawKitePart'), '纸鸢应使用有形状与装配顺序的视觉部件');
 assert.ok(game.includes('seasonStars(season) > 12'), '进入下一季必须超过 2/3 星数');
 assert.ok(game.includes('mini.started') && game.includes('startMiniGame'), '小游戏必须先展示教程，确认后才开始');

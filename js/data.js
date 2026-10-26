@@ -73,7 +73,7 @@ window.JOURNEY_DATA = {
       culture: '春分有竖蛋的趣味民俗，挑战重心与耐心，而不是所谓“引力异常”。',
       game: {
         type: 'timing', title: '春分立蛋', hint: '在游标进入绿色区域时点击或按空格，让鸡蛋站稳。',
-        objectGlyph: '蛋', rounds: 3
+        objectGlyph: '蛋', rounds: 5, timeLimit: 24
       }
     },
     {
@@ -119,8 +119,8 @@ window.JOURNEY_DATA = {
       position: { x: 520, y: 500 }, color: '#d7ad3d',
       culture: '小满前后农事繁忙，部分地区有祭车神、祈求灌溉顺利的习俗。',
       game: {
-        type: 'pump', title: '踩动水车', hint: '左右交替踩动踏板八次，让水车持续把水送进田里。',
-        strokes: 8
+        type: 'pump', title: '稳住水车', hint: '左右交替踩踏，让水位保持在绿色区间累计 8 秒。',
+        targetSeconds: 8
       }
     },
     {
@@ -128,8 +128,8 @@ window.JOURNEY_DATA = {
       position: { x: 900, y: 290 }, color: '#cf882e',
       culture: '芒种兼有收获与播种的农事节奏，各地还有送花神、煮梅等习俗。',
       game: {
-        type: 'plant', title: '收麦插秧', hint: '从秧盘拖出秧苗，依次放进九块水田格。',
-        slots: 9
+        type: 'plant', title: '收麦插秧', hint: '在 32 秒内把稻秧、豆苗和玉米苗分别拖进对应的三块田垄。',
+        slots: 9, timeLimit: 32, crops: [{ name: '稻秧' }, { name: '豆苗' }, { name: '玉米苗' }]
       }
     },
     {
@@ -147,7 +147,7 @@ window.JOURNEY_DATA = {
       culture: '小暑前后有晒书、晒衣的习俗，利用盛夏阳光防潮防霉。',
       game: {
         type: 'weather', title: '晒书晾衣', hint: '看天空变化，在太阳和乌云之间快速选择晒或收。',
-        rounds: 6, items: ['诗集', '长衫', '稻谷', '画册', '棉被', '豆子']
+        rounds: 8, items: ['诗集', '长衫', '稻谷', '画册', '棉被', '豆子', '衣裳', '书箱']
       }
     },
     {
@@ -164,12 +164,14 @@ window.JOURNEY_DATA = {
       position: { x: 300, y: 300 }, color: '#d99131',
       culture: '立秋前后，山区村落常把辣椒、玉米、南瓜等作物晾晒成缤纷的“晒秋”景观。',
       game: {
-        type: 'hang', title: '把秋色晒开', hint: '拖动红、黄两色作物，分别挂到同色晒架上。',
+        type: 'hang', title: '把秋色晒开', hint: '在 28 秒内把九件红、黄作物分别挂到同色晒架。', timeLimit: 28,
         categories: [{ name: '红架', glyph: '红', cat: 0 }, { name: '黄架', glyph: '黄', cat: 1 }],
         items: [
           { name: '辣椒', glyph: '椒', cat: 0 }, { name: '玉米', glyph: '玉', cat: 1 },
           { name: '南瓜', glyph: '瓜', cat: 1 }, { name: '山楂', glyph: '楂', cat: 0 },
-          { name: '稻谷', glyph: '稻', cat: 1 }, { name: '枸杞', glyph: '杞', cat: 0 }
+          { name: '稻谷', glyph: '稻', cat: 1 }, { name: '枸杞', glyph: '杞', cat: 0 },
+          { name: '红椒', glyph: '椒', cat: 0 }, { name: '黄豆', glyph: '豆', cat: 1 },
+          { name: '高粱', glyph: '粱', cat: 0 }
         ]
       }
     },
@@ -187,8 +189,8 @@ window.JOURNEY_DATA = {
       position: { x: 1000, y: 440 }, color: '#899e78',
       culture: '部分地区有收清露、饮白露茶的习俗，表达对秋日清晨的珍惜。',
       game: {
-        type: 'dew', title: '收一盅清露', hint: '在露珠消失前逐颗点入瓷盅，收满八颗清露。',
-        drops: 8
+        type: 'dew', title: '收一盅清露', hint: '在露珠消失前准确点入瓷盅，收满十二颗清露；空点会失误。',
+        drops: 12, timeLimit: 24
       }
     },
     {
@@ -205,8 +207,8 @@ window.JOURNEY_DATA = {
       position: { x: 1120, y: 880 }, color: '#b1803a',
       culture: '寒露与重阳时节相近，部分地区有登高、赏菊、饮菊花酒的习俗。',
       game: {
-        type: 'climb', title: '踏阶登高', hint: '从低到高依次点击十块石阶，一步一级登上山亭。',
-        stones: 10
+        type: 'climb', title: '踏阶登高', hint: '在 20 秒内从低到高点击十二块石阶，踏错会失误。',
+        stones: 12, timeLimit: 20
       }
     },
     {
@@ -214,8 +216,8 @@ window.JOURNEY_DATA = {
       position: { x: 650, y: 980 }, color: '#c86a2d',
       culture: '霜降前后，部分地区有吃柿子、赏菊、登高的习俗。',
       game: {
-        type: 'shake', title: '摇落枝头红柿', hint: '按住树干左右快速摇动，让五颗柿子落进竹篮。',
-        fruits: 5
+        type: 'shake', title: '摇落枝头红柿', hint: '在 28 秒内摇树，并移动竹篮接住五颗落下的柿子。',
+        fruits: 6, targetFruits: 5, timeLimit: 28
       }
     },
     {
@@ -223,7 +225,7 @@ window.JOURNEY_DATA = {
       position: { x: 320, y: 430 }, color: '#5f91ae',
       culture: '立冬有补冬、吃饺子等习俗，北方不少地区把饺子作为节令食物。',
       game: {
-        type: 'fold', title: '包一盘饺子', hint: '按住面皮两侧向中心折合，捏出三只饺子。', rounds: 3
+        type: 'fold', title: '包一盘饺子', hint: '每只饺子先放馅、再折合、最后捏紧边缘；完成三只。', rounds: 3
       }
     },
     {
@@ -231,7 +233,7 @@ window.JOURNEY_DATA = {
       position: { x: 600, y: 250 }, color: '#71a7c0',
       culture: '小雪前后气温降低，部分地区开始腌腊肉、晒鱼干，为寒冬储备食物。',
       game: {
-        type: 'salt', title: '给腊肉抹盐', hint: '按住盐罐在肉条上来回拖动，把盐均匀覆盖。', strips: 3
+        type: 'salt', title: '给腊肉抹盐', hint: '按住盐罐移动，三条肉都要均匀覆盖；撒得过厚会失误。', strips: 3
       }
     },
     {
@@ -239,7 +241,7 @@ window.JOURNEY_DATA = {
       position: { x: 980, y: 300 }, color: '#4f87a7',
       culture: '大雪时节积雪加深，扫雪开路、赏雪、腌肉等习俗与冬日生活相连。',
       game: {
-        type: 'wipe', title: '扫出一条归路', hint: '按住扫帚拖过雪堆，清出通往家门的小路。', patches: 6
+        type: 'wipe', title: '扫出一条归路', hint: '在 24 秒内拖动扫帚清除八处雪堆。', patches: 8, timeLimit: 24
       }
     },
     {
@@ -247,7 +249,7 @@ window.JOURNEY_DATA = {
       position: { x: 1450, y: 410 }, color: '#6aa3bd',
       culture: '冬至有吃饺子、汤圆等习俗，不同地区用各自的食物寄托团圆与迎冬。',
       game: {
-        type: 'roll', title: '搓一碗汤圆', hint: '按住面团并画圈搓圆，做够三颗汤圆。', rounds: 3
+        type: 'roll', title: '搓一碗汤圆', hint: '按住面团持续画圈，每颗至少转两圈半，搓出三颗汤圆。', rounds: 3, targetTurns: 2.4
       }
     },
     {
@@ -255,7 +257,7 @@ window.JOURNEY_DATA = {
       position: { x: 1220, y: 850 }, color: '#5b8ca6',
       culture: '小寒前后有吃腊八粥、探梅、备年货等习俗，用热粥温暖寒冬。',
       game: {
-        type: 'pour', title: '配一碗腊八粥', hint: '按米、豆、枣、果的顺序，把食材拖进粥锅。',
+        type: 'pour', title: '配一碗腊八粥', hint: '在 16 秒内按米、豆、枣、果的顺序，把食材拖进粥锅。', timeLimit: 16,
         ingredients: [{ name: '米', glyph: '米' }, { name: '豆', glyph: '豆' }, { name: '枣', glyph: '枣' }, { name: '果', glyph: '果' }]
       }
     },
@@ -264,7 +266,7 @@ window.JOURNEY_DATA = {
       position: { x: 700, y: 960 }, color: '#507e99',
       culture: '大寒临近春节，部分地区有除尘、备年货等习俗，以清爽环境迎接新年。',
       game: {
-        type: 'sweep', title: '扫尘迎新年', hint: '快速划过屋内的尘团，把角落清扫干净。', spots: 8
+        type: 'sweep', title: '扫尘迎新年', hint: '在 22 秒内清理九处尘团，避开桌上的瓷器。', spots: 9, timeLimit: 22
       }
     }
   ]
